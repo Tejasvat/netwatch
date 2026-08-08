@@ -1,0 +1,1138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NetWatch — Network Monitor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+  --bg:     #07090b;
+  --bg1:    #0d1117;
+  --bg2:    #111820;
+  --bg3:    #161e28;
+  --line:   #1c2a35;
+  --line2:  #243040;
+  --dim:    #334455;
+  --muted:  #4a6070;
+  --text:   #90b8c8;
+  --text2:  #c0d8e4;
+  --bright: #e4f0f8;
+  --green:  #00e676;
+  --cyan:   #29d8f0;
+  --amber:  #ffba08;
+  --red:    #ff3355;
+  --mono:   'IBM Plex Mono', monospace;
+  --sans:   'IBM Plex Sans', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; overflow: hidden; }
+
+/* subtle scanlines */
+body::after { content: ''; position: fixed; inset: 0; background: repeating-linear-gradient(to bottom, transparent 0, transparent 3px, rgba(0,0,0,.04) 3px, rgba(0,0,0,.04) 4px); pointer-events: none; z-index: 1000; }
+
+/* ═══════════════════════════════════
+   TOPBAR
+═══════════════════════════════════ */
+#topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  height: 52px; padding: 0 20px;
+  border-bottom: 1px solid var(--line2);
+  background: var(--bg1);
+  position: relative; z-index: 10;
+}
+
+.tb-left { display: flex; align-items: center; gap: 16px; }
+
+.logo { display: flex; align-items: center; gap: 10px; }
+.logo-icon {
+  width: 30px; height: 30px; border-radius: 6px;
+  background: linear-gradient(135deg, #00e676, #00bcd4);
+  display: flex; align-items: center; justify-content: center;
+}
+.logo-icon svg { width: 16px; height: 16px; }
+.logo-text { font-family: var(--mono); font-size: 15px; font-weight: 700; color: var(--bright); letter-spacing: 1px; }
+.logo-text span { color: var(--green); }
+
+.live-pill {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 12px; border-radius: 20px;
+  border: 1px solid var(--green); color: var(--green);
+  font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 1px;
+}
+.live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: blink 1.4s ease-in-out infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+
+.tb-right { display: flex; align-items: center; gap: 20px; }
+
+.tb-info { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.tb-info .lbl { color: var(--dim); }
+.tb-info .val { color: var(--text2); font-family: var(--mono); font-weight: 600; }
+#sys-time { color: var(--cyan); }
+
+.status-badge {
+  padding: 5px 14px; border-radius: 4px;
+  font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 1px;
+  border: 1px solid; transition: all .3s;
+}
+.status-live     { border-color: var(--green); color: var(--green); background: rgba(0,230,118,.06); }
+.status-alert    { border-color: var(--amber); color: var(--amber); background: rgba(255,186,8,.06); }
+.status-critical { border-color: var(--red);   color: var(--red);   background: rgba(255,51,85,.08); animation: pulse-border .8s ease-in-out infinite; }
+.status-offline  { border-color: var(--dim);   color: var(--muted); background: transparent; }
+@keyframes pulse-border { 0%,100%{opacity:1} 50%{opacity:.5} }
+
+.settings-btn {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 14px; border-radius: 4px;
+  border: 1px solid var(--line2); color: var(--muted);
+  font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 1px;
+  text-decoration: none; transition: all .2s;
+}
+.settings-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+
+/* Consent-based agent download prompt */
+#agent-consent { position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center; padding: 20px; background: rgba(0,0,0,.76); }
+.consent-card { width: min(520px, 100%); padding: 28px; border: 1px solid var(--line2); border-radius: 8px; background: var(--bg1); box-shadow: 0 18px 70px rgba(0,0,0,.55); }
+.consent-card h2 { color: var(--bright); font-size: 20px; margin-bottom: 12px; }
+.consent-card p { color: var(--text); line-height: 1.55; margin: 10px 0; }
+.consent-card ul { color: var(--text); line-height: 1.6; margin: 10px 0 18px 20px; }
+.consent-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.consent-download { display: inline-block; padding: 10px 14px; border-radius: 4px; background: var(--green); color: #041009; font: 700 12px var(--mono); text-decoration: none; }
+.consent-dismiss { border: 0; background: transparent; color: var(--muted); font: 600 12px var(--mono); cursor: pointer; padding: 10px 4px; }
+
+/* ═══════════════════════════════════
+   PAGE LAYOUT
+═══════════════════════════════════ */
+#layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  height: calc(100vh - 52px);
+  gap: 1px;
+  background: var(--line);
+}
+
+/* LEFT COLUMN */
+#left-col {
+  display: grid;
+  grid-template-rows: 110px 1fr 44px 200px;
+  gap: 1px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+/* ═══════════════════════════════════
+   STAT ROW
+═══════════════════════════════════ */
+#stat-row {
+  display: grid; grid-template-columns: repeat(4,1fr);
+  gap: 1px; background: var(--line);
+}
+
+.stat-card {
+  background: var(--bg1); padding: 14px 20px;
+  display: flex; flex-direction: column; justify-content: space-between;
+  position: relative; overflow: hidden;
+}
+
+.stat-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: var(--dim); transition: background .4s;
+}
+.stat-card.active::before { background: var(--cyan); }
+.stat-card.warn::before   { background: var(--amber); }
+.stat-card.alert-state::before { background: var(--red); }
+
+.sc-label {
+  font-size: 11px; font-weight: 600; letter-spacing: .5px;
+  color: var(--muted); text-transform: uppercase;
+}
+.sc-num {
+  font-family: var(--mono); font-size: 34px; font-weight: 700;
+  line-height: 1; letter-spacing: -1px; margin: 4px 0 3px;
+  transition: color .4s;
+}
+.sc-sub { font-size: 11px; color: var(--dim); }
+
+/* ═══════════════════════════════════
+   CHARTS
+═══════════════════════════════════ */
+#charts-area {
+  display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+  gap: 1px; background: var(--line);
+}
+
+.chart-card {
+  background: var(--bg1); padding: 12px 16px;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+
+.chart-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 8px; flex-shrink: 0;
+}
+
+.chart-title {
+  font-size: 12px; font-weight: 600; color: var(--text2);
+}
+
+.chart-subtitle {
+  font-size: 11px; color: var(--dim); margin-top: 1px;
+}
+
+.chart-cur {
+  font-family: var(--mono); font-size: 12px; color: var(--muted);
+  text-align: right;
+}
+
+.chart-wrap { flex: 1; position: relative; min-height: 0; }
+
+/* ═══════════════════════════════════
+   ACTIVITY BAR
+═══════════════════════════════════ */
+#activity-bar {
+  background: var(--bg1);
+  display: flex; align-items: center; gap: 20px;
+  padding: 0 20px; border-top: 1px solid var(--line2);
+  overflow: hidden;
+}
+
+.act-item { display: flex; align-items: center; gap: 7px; }
+.act-label { font-size: 11px; color: var(--dim); }
+
+.act-tag {
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  padding: 2px 8px; border-radius: 3px; border: 1px solid; letter-spacing: .5px;
+}
+.act-streaming     { color: var(--green); border-color: rgba(0,230,118,.4); background: rgba(0,230,118,.06); }
+.act-large_download{ color: var(--cyan);  border-color: rgba(41,216,240,.4); background: rgba(41,216,240,.06); }
+.act-browsing      { color: var(--text2); border-color: var(--line2); background: transparent; }
+.act-upload        { color: var(--amber); border-color: rgba(255,186,8,.4);  background: rgba(255,186,8,.06); }
+.act-idle          { color: var(--dim);   border-color: var(--line);  background: transparent; }
+.act-unknown       { color: var(--dim);   border-color: var(--line);  background: transparent; }
+.act-warming_up    { color: var(--dim);   border-color: var(--line);  background: transparent; }
+
+.act-suppressed {
+  font-size: 11px; color: var(--amber);
+  padding: 2px 8px; border: 1px solid rgba(255,186,8,.3); border-radius: 3px;
+  background: rgba(255,186,8,.05);
+}
+
+/* ═══════════════════════════════════
+   EVENT LOG
+═══════════════════════════════════ */
+#event-log {
+  background: var(--bg1);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+
+.log-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 20px; border-bottom: 1px solid var(--line2); flex-shrink: 0;
+}
+
+.log-head-title {
+  font-size: 13px; font-weight: 600; color: var(--text2);
+}
+.log-head-count {
+  font-family: var(--mono); font-size: 11px; color: var(--dim);
+}
+#log-n { color: var(--text); }
+
+.log-col-headers {
+  display: grid; grid-template-columns: 66px 76px 90px 1fr 60px;
+  gap: 10px; padding: 5px 20px;
+  font-size: 10px; font-weight: 600; letter-spacing: 1px;
+  text-transform: uppercase; color: var(--dim);
+  border-bottom: 1px solid var(--line); flex-shrink: 0;
+}
+
+.log-body { flex: 1; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--dim) transparent; }
+
+.log-row {
+  display: grid; grid-template-columns: 66px 76px 90px 1fr 60px;
+  gap: 10px; align-items: center;
+  padding: 7px 20px; border-bottom: 1px solid var(--line);
+  animation: fadein .25s ease; transition: background .15s; cursor: default;
+}
+.log-row:hover { background: var(--bg2); }
+@keyframes fadein { from { opacity:0; transform: translateY(4px); } to { opacity:1; } }
+
+.log-time   { font-family: var(--mono); font-size: 12px; color: var(--dim); }
+.log-sev    { font-family: var(--mono); font-size: 12px; font-weight: 700; }
+.log-what   { font-size: 12px; color: var(--muted); }
+.log-desc   { font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.log-conf   { font-family: var(--mono); font-size: 12px; color: var(--muted); text-align: right; }
+
+.sev-CRITICAL { color: var(--red)   !important; }
+.sev-HIGH     { color: var(--amber) !important; }
+.sev-MEDIUM   { color: #ffd740      !important; }
+.sev-LOW      { color: var(--cyan)  !important; }
+.sev-OK       { color: var(--green) !important; }
+
+.log-empty { padding: 24px 20px; color: var(--dim); font-size: 13px; }
+
+/* ═══════════════════════════════════
+   RIGHT PANEL
+═══════════════════════════════════ */
+#right-panel {
+  background: var(--bg1);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid var(--line2);
+}
+
+.rp-sep { width: 100%; height: 1px; background: var(--line2); flex-shrink: 0; }
+
+/* Section header */
+.rp-section-head {
+  padding: 10px 18px 8px;
+  font-size: 11px; font-weight: 600; letter-spacing: 1px;
+  text-transform: uppercase; color: var(--muted);
+  flex-shrink: 0;
+}
+
+/* ─── Threat level ─── */
+.threat-block { padding: 16px 18px 18px; flex-shrink: 0; }
+
+.threat-label { font-size: 11px; font-weight: 600; color: var(--dim); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px; }
+
+.threat-verdict {
+  font-family: var(--mono); font-size: 44px; font-weight: 700;
+  line-height: 1; letter-spacing: -1px;
+  margin-bottom: 14px; transition: color .4s;
+}
+
+.threat-rows { display: flex; flex-direction: column; gap: 6px; }
+.threat-row  { display: flex; justify-content: space-between; align-items: center; }
+.tr-k { font-size: 12px; color: var(--muted); }
+.tr-v { font-family: var(--mono); font-size: 12px; color: var(--text2); font-weight: 500; }
+
+/* ─── AI Learning status ─── */
+.ai-block { padding: 14px 18px; flex-shrink: 0; }
+
+.ai-label { font-size: 11px; font-weight: 600; color: var(--dim); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px; }
+
+.ai-status-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.ai-status-txt { font-size: 13px; color: var(--text2); }
+.ai-active  { color: var(--green) !important; font-weight: 600; }
+.ai-warming { color: var(--amber) !important; }
+
+.ai-track { height: 5px; background: var(--bg3); border-radius: 3px; overflow: hidden; margin-bottom: 6px; }
+.ai-fill  { height: 100%; background: linear-gradient(90deg, #0097a7, var(--cyan)); border-radius: 3px; transition: width .6s ease; }
+
+.ai-note { font-size: 11px; color: var(--dim); line-height: 1.5; }
+
+/* ─── How it detected ─── */
+.det-block { padding: 12px 18px; flex-shrink: 0; }
+.det-label { font-size: 11px; font-weight: 600; color: var(--dim); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px; }
+
+.det-row { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+.det-name { font-size: 12px; color: var(--text); width: 100px; flex-shrink: 0; }
+.det-track { flex: 1; height: 4px; background: var(--bg3); border-radius: 2px; overflow: hidden; }
+.det-fill  { height: 100%; border-radius: 2px; transition: width .5s ease; }
+.det-fill.ml    { background: var(--cyan); }
+.det-fill.rules { background: var(--amber); }
+.det-fill.combo { background: var(--green); }
+.det-pct   { font-family: var(--mono); font-size: 12px; color: var(--text2); width: 32px; text-align: right; }
+
+/* ─── Alert reports download ─── */
+.dl-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 18px 8px; flex-shrink: 0;
+}
+.dl-head-title { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
+.dl-count { font-family: var(--mono); font-size: 11px; color: var(--dim); }
+#dl-n { color: var(--text); }
+
+.dl-list { flex: 1; overflow-y: auto; min-height: 0; scrollbar-width: thin; scrollbar-color: var(--dim) transparent; }
+
+.dl-item {
+  padding: 9px 18px; border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; gap: 10px;
+  animation: fadein .25s ease; transition: background .15s; cursor: default;
+}
+.dl-item:hover { background: var(--bg2); }
+
+.dl-sev-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+
+.dl-info { flex: 1; min-width: 0; }
+.dl-name { font-size: 12px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dl-meta { font-size: 11px; color: var(--dim); margin-top: 2px; }
+
+.dl-btn {
+  padding: 4px 10px; border: 1px solid var(--line2); border-radius: 3px;
+  font-family: var(--mono); font-size: 11px; color: var(--muted);
+  background: transparent; cursor: pointer; transition: all .2s; flex-shrink: 0;
+  white-space: nowrap;
+}
+.dl-btn:hover { border-color: var(--cyan); color: var(--cyan); background: rgba(41,216,240,.05); }
+
+.dl-empty { padding: 20px 18px; color: var(--dim); font-size: 12px; text-align: center; line-height: 1.7; }
+
+/* critical flash */
+@keyframes critflash { 0%{box-shadow:inset 0 0 0 2px rgba(255,51,85,.6)} 100%{box-shadow:inset 0 0 0 2px transparent} }
+.critspark { animation: critflash 1s ease forwards; }
+
+/* ═══════════════════════════════════
+   C2 CONNECTION STATUS PANEL
+═══════════════════════════════════ */
+#c2-panel {
+  flex-shrink: 0;
+  padding: 0 0 2px;
+  border-bottom: 1px solid var(--line2);
+  position: relative;
+  overflow: hidden;
+}
+
+/* subtle left accent bar that changes colour with state */
+#c2-panel::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--dim);
+  transition: background .5s ease;
+}
+#c2-panel.c2-online::before  { background: var(--green); }
+#c2-panel.c2-offline::before { background: var(--red);   }
+
+.c2-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 18px 0 18px;
+}
+.c2-title {
+  font-size: 11px; font-weight: 600; letter-spacing: 1px;
+  text-transform: uppercase; color: var(--muted);
+}
+
+/* ── Status pill ── */
+.c2-pill {
+  display: flex; align-items: center; gap: 7px;
+  padding: 3px 11px; border-radius: 20px;
+  border: 1px solid var(--dim);
+  font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 1px;
+  color: var(--muted);
+  transition: border-color .4s, color .4s, background .4s;
+}
+.c2-pill.c2-online {
+  border-color: rgba(0,230,118,.5);
+  color: var(--green);
+  background: rgba(0,230,118,.06);
+}
+.c2-pill.c2-offline {
+  border-color: rgba(255,51,85,.45);
+  color: var(--red);
+  background: rgba(255,51,85,.06);
+}
+
+/* ── Glowing pulse dot ── */
+.c2-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--dim);
+  flex-shrink: 0;
+  transition: background .4s, box-shadow .4s;
+}
+.c2-dot.c2-online {
+  background: var(--green);
+  box-shadow: 0 0 0 0 rgba(0,230,118,.7);
+  animation: c2-pulse 2s ease-out infinite;
+}
+.c2-dot.c2-offline {
+  background: var(--red);
+  box-shadow: none;
+  animation: none;
+}
+@keyframes c2-pulse {
+  0%   { box-shadow: 0 0 0 0   rgba(0,230,118,.7); }
+  70%  { box-shadow: 0 0 0 7px rgba(0,230,118,0);  }
+  100% { box-shadow: 0 0 0 0   rgba(0,230,118,0);  }
+}
+
+/* ── Metadata rows ── */
+.c2-body {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 10px 18px 12px 18px;
+}
+.c2-row {
+  display: flex; justify-content: space-between; align-items: center;
+}
+.c2-k {
+  font-size: 11px; color: var(--muted);
+}
+.c2-v {
+  font-family: var(--mono); font-size: 11px;
+  color: var(--dim);
+  transition: color .4s;
+}
+.c2-v.c2-online  { color: var(--text2); }
+.c2-v.c2-offline { color: var(--dim);   }
+
+/* uptime counter */
+#c2-uptime-row { display: none; }
+</style>
+</head>
+<body>
+<section id="agent-consent" role="dialog" aria-modal="true" aria-labelledby="agent-consent-title">
+  <div class="consent-card">
+    <h2 id="agent-consent-title">Monitor this Windows computer?</h2>
+    <p>NetWatch needs its optional desktop agent to show live network activity from this computer.</p>
+    <ul>
+      <li>It sends aggregate network telemetry: transfer rates, connection counts, protocols, and destination-port counts.</li>
+      <li>It does not collect files, keystrokes, browsing content, or passwords.</li>
+      <li>The agent has a visible Start/Stop control and should only be installed by the device owner or an authorized administrator.</li>
+    </ul>
+    <div class="consent-actions">
+      <a class="consent-download" href="/downloads/netwatch-agent">I understand — download Windows agent</a>
+      <button class="consent-dismiss" type="button" onclick="document.getElementById('agent-consent').remove()">Continue without agent</button>
+    </div>
+  </div>
+</section>
+
+<!-- ══ TOPBAR ══ -->
+<div id="topbar">
+  <div class="tb-left">
+    <div class="logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 16 16" fill="none">
+          <circle cx="8" cy="8" r="3" fill="#07090b"/>
+          <circle cx="8" cy="8" r="6.5" stroke="#07090b" stroke-width="2"/>
+          <circle cx="8" cy="8" r="3" fill="white" opacity=".9"/>
+          <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2" stroke="white" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <span class="logo-text">Net<span>Watch</span></span>
+    </div>
+    <div class="live-pill">
+      <div class="live-dot"></div>
+      MONITORING
+    </div>
+  </div>
+
+  <div class="tb-right">
+    <div class="tb-info">
+      <span class="lbl">Time</span>
+      <span class="val" id="sys-time">--:--:--</span>
+    </div>
+    <div class="tb-info">
+      <span class="lbl">Computer</span>
+      <span class="val" style="color:var(--green)">local-pc-01</span>
+    </div>
+    <div class="status-badge status-offline" id="status-badge">Waiting…</div>
+    <a class="settings-btn" href="/settings-page" target="_blank">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"/></svg>
+      Settings
+    </a>
+  </div>
+</div>
+
+<!-- ══ LAYOUT ══ -->
+<div id="layout">
+
+  <!-- LEFT COL -->
+  <div id="left-col">
+
+    <!-- STAT ROW -->
+    <div id="stat-row">
+
+      <div class="stat-card" id="sc-download">
+        <div class="sc-label">Download Speed</div>
+        <div class="sc-num" id="sv-in" style="color:var(--cyan)">—</div>
+        <div class="sc-sub">data coming in to your PC</div>
+      </div>
+
+      <div class="stat-card" id="sc-upload">
+        <div class="sc-label">Upload Speed</div>
+        <div class="sc-num" id="sv-out" style="color:var(--text2)">—</div>
+        <div class="sc-sub">data going out from your PC</div>
+      </div>
+
+      <div class="stat-card" id="sc-conn">
+        <div class="sc-label">Open Connections</div>
+        <div class="sc-num" id="sv-conn" style="color:var(--green)">—</div>
+        <div class="sc-sub">apps talking to the internet</div>
+      </div>
+
+      <div class="stat-card" id="sc-alerts">
+        <div class="sc-label">Alerts Raised</div>
+        <div class="sc-num" id="sv-alerts" style="color:var(--dim)">0</div>
+        <div class="sc-sub">suspicious events detected</div>
+      </div>
+
+    </div>
+
+    <!-- CHARTS -->
+    <div id="charts-area">
+
+      <div class="chart-card">
+        <div class="chart-head">
+          <div>
+            <div class="chart-title">Download &amp; Upload Speed</div>
+            <div class="chart-subtitle">How fast data is moving in and out</div>
+          </div>
+          <div class="chart-cur" id="bw-cur">—</div>
+        </div>
+        <div class="chart-wrap"><canvas id="c-bw"></canvas></div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-head">
+          <div>
+            <div class="chart-title">Open Connections &amp; Destinations</div>
+            <div class="chart-subtitle">Apps connected · unique servers contacted</div>
+          </div>
+          <div class="chart-cur" id="conn-cur">—</div>
+        </div>
+        <div class="chart-wrap"><canvas id="c-conn"></canvas></div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-head">
+          <div>
+            <div class="chart-title">AI Threat Score</div>
+            <div class="chart-subtitle">0 = totally normal · lower = more suspicious</div>
+          </div>
+          <div class="chart-cur" id="ml-cur">—</div>
+        </div>
+        <div class="chart-wrap"><canvas id="c-ml"></canvas></div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-head">
+          <div>
+            <div class="chart-title">Connection Attempts per Second</div>
+            <div class="chart-subtitle">SYN packets · new connections · rapid spikes = suspicious</div>
+          </div>
+          <div class="chart-cur" id="syn-cur">—</div>
+        </div>
+        <div class="chart-wrap"><canvas id="c-syn"></canvas></div>
+      </div>
+
+    </div>
+
+    <!-- ACTIVITY BAR -->
+    <div id="activity-bar">
+      <div class="act-item">
+        <span class="act-label">What you're doing:</span>
+        <span class="act-tag act-unknown" id="act-tag">Detecting…</span>
+      </div>
+      <div class="act-item" id="suppress-item" style="display:none">
+        <span class="act-suppressed">Normal</span>
+      </div>
+      <div class="act-item" style="margin-left:auto">
+        <span class="act-label">Typical download speed:</span>
+        <span class="act-label" id="act-ema" style="color:var(--text)">—</span>
+      </div>
+    </div>
+
+    <!-- EVENT LOG -->
+    <div id="event-log">
+      <div class="log-head">
+        <div class="log-head-title">Detection Log</div>
+        <div class="log-head-count"><span id="log-n">0</span> events recorded</div>
+      </div>
+      <div class="log-col-headers">
+        <span>Time</span>
+        <span>Severity</span>
+        <span>What you did</span>
+        <span>What was detected</span>
+        <span>Certainty</span>
+      </div>
+      <div class="log-body" id="log-body">
+        <div class="log-empty" id="log-empty">
+          Waiting for data from the agent… Start <code>agent.py</code> if you haven't already.
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div id="right-panel">
+
+    <!-- ══ C2 CONNECTION STATUS ══ -->
+    <div id="c2-panel">
+      <div class="c2-head">
+        <span class="c2-title">C2 Connection Status</span>
+        <div class="c2-pill" id="c2-pill">
+          <span class="c2-dot" id="c2-dot"></span>
+          <span id="c2-pill-label">WAITING</span>
+        </div>
+      </div>
+      <div class="c2-body">
+        <div class="c2-row">
+          <span class="c2-k">Agent ID</span>
+          <span class="c2-v" id="c2-agent-id">—</span>
+        </div>
+        <div class="c2-row">
+          <span class="c2-k">Last Ping</span>
+          <span class="c2-v" id="c2-last-ping">—</span>
+        </div>
+        <div class="c2-row" id="c2-uptime-row">
+          <span class="c2-k">Session uptime</span>
+          <span class="c2-v c2-online" id="c2-uptime">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- THREAT LEVEL -->
+    <div class="rp-section-head">Current Threat Level</div>
+    <div class="threat-block">
+      <div class="threat-verdict" id="tl-verdict" style="color:var(--green)">Safe</div>
+      <div class="threat-rows">
+        <div class="threat-row">
+          <span class="tr-k">Certainty</span>
+          <span class="tr-v" id="tl-conf">—</span>
+        </div>
+        <div class="threat-row">
+          <span class="tr-k">Detected by</span>
+          <span class="tr-v" id="tl-by">—</span>
+        </div>
+        <div class="threat-row">
+          <span class="tr-k">AI judgment</span>
+          <span class="tr-v" id="tl-ai">—</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="rp-sep"></div>
+
+    <!-- AI LEARNING -->
+    <div class="rp-section-head">AI Learning Status</div>
+    <div class="ai-block">
+      <div class="ai-status-row">
+        <span class="ai-status-txt" id="ai-status">Collecting samples…</span>
+        <span class="ai-status-txt" id="ai-pct" style="color:var(--dim)">0%</span>
+      </div>
+      <div class="ai-track"><div class="ai-fill" id="ai-fill" style="width:0%"></div></div>
+      <div class="ai-note" id="ai-note">
+        The AI needs to learn what normal looks like on your network before it can detect threats. This takes about 2 minutes.
+      </div>
+    </div>
+
+    <div class="rp-sep"></div>
+
+    <!-- HOW IT WAS DETECTED -->
+    <div class="rp-section-head">How Threats Are Found</div>
+    <div class="det-block">
+      <div class="det-row">
+        <span class="det-name">AI Pattern</span>
+        <div class="det-track"><div class="det-fill ml" id="det-ml" style="width:0%"></div></div>
+        <span class="det-pct" id="det-ml-pct">—</span>
+      </div>
+      <div class="det-row">
+        <span class="det-name">Rule Match</span>
+        <div class="det-track"><div class="det-fill rules" id="det-rules" style="width:0%"></div></div>
+        <span class="det-pct" id="det-rules-pct">—</span>
+      </div>
+      <div class="det-row">
+        <span class="det-name">Both Agreed</span>
+        <div class="det-track"><div class="det-fill combo" id="det-combo" style="width:0%"></div></div>
+        <span class="det-pct" id="det-combo-pct">—</span>
+      </div>
+      <div style="font-size:11px;color:var(--dim);margin-top:4px;line-height:1.5">
+        "Both Agreed" alerts are most reliable — when AI and rules independently flag the same event.
+      </div>
+    </div>
+
+    <div class="rp-sep"></div>
+
+    <!-- ALERT DOWNLOADS -->
+    <div class="dl-head">
+      <span class="dl-head-title">Saved Alert Reports</span>
+      <span class="dl-count"><span id="dl-n">0</span> files</span>
+    </div>
+    <div class="dl-list" id="dl-list">
+      <div class="dl-empty" id="dl-empty">
+        No alerts yet.<br>Reports appear here automatically when something suspicious is detected.
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+const N = 80;
+
+const SEV_COL = { OK:'#00e676', LOW:'#29d8f0', MEDIUM:'#ffd740', HIGH:'#ffba08', CRITICAL:'#ff3355', WARMING_UP:'#334455' };
+const SEV_ORD = { OK:0, WARMING_UP:0, LOW:1, MEDIUM:2, HIGH:3, CRITICAL:4 };
+
+// Human-readable severity labels
+const SEV_LABEL = { OK:'Safe', LOW:'Low Risk', MEDIUM:'Moderate', HIGH:'High Alert', CRITICAL:'Critical!', WARMING_UP:'Learning…' };
+
+const CTX_LABEL = {
+  streaming:      'Streaming Video',
+  large_download: 'Large Download',
+  upload:         'Uploading Files',
+  browsing:       'Web Browsing',
+  idle:           'Idle / Low Activity',
+  unknown:        'General Use',
+  warming_up:     'Detecting…',
+};
+
+// Human-readable fusion reason
+const FUSION_LABEL = {
+  both_agree:                     'AI + Rules',
+  both_agree_context_suppressed:  'AI + Rules (reduced)',
+  rule_only:                      'Rules only',
+  rule_only_context_suppressed:   'Rules only (reduced)',
+  ml_only:                        'AI only',
+  ml_only_context_suppressed:     'AI only (reduced)',
+  rules_only_ml_warming_up:       'Rules only (AI learning)',
+  clean:                          'None — all clear',
+};
+
+let totalAlerts = 0, logCount = 0;
+let mlHits = 0, ruleHits = 0, comboHits = 0;
+const alertFiles = new Map();
+
+// ── C2 Connection State ───────────────────────────────────────────────────
+let _c2OnlineSince   = null;   // Date when client came online
+let _c2UptimeTick    = null;   // setInterval handle for uptime counter
+
+function updateC2Status(online, agentId, lastSeenTs) {
+  const panel     = document.getElementById('c2-panel');
+  const pill      = document.getElementById('c2-pill');
+  const dot       = document.getElementById('c2-dot');
+  const pillLabel = document.getElementById('c2-pill-label');
+  const agentEl   = document.getElementById('c2-agent-id');
+  const pingEl    = document.getElementById('c2-last-ping');
+  const uptimeRow = document.getElementById('c2-uptime-row');
+  const uptimeEl  = document.getElementById('c2-uptime');
+
+  // Agent ID
+  if (agentId) agentEl.textContent = agentId;
+
+  // Last ping timestamp
+  if (lastSeenTs) {
+    const d = new Date(lastSeenTs);
+    pingEl.textContent = d.toLocaleTimeString('en-GB', { hour12: false })
+      + '  ' + d.toLocaleDateString('en-GB', { day:'2-digit', month:'short' });
+  }
+
+  // Apply online / offline classes
+  const addState    = online ? 'c2-online'  : 'c2-offline';
+  const removeState = online ? 'c2-offline' : 'c2-online';
+
+  [panel, pill, dot].forEach(el => {
+    el.classList.add(addState);
+    el.classList.remove(removeState);
+  });
+  [agentEl, pingEl].forEach(el => {
+    el.classList.add(addState);
+    el.classList.remove(removeState);
+  });
+
+  pillLabel.textContent = online ? 'ONLINE' : 'OFFLINE';
+
+  // Uptime counter
+  if (online) {
+    if (!_c2OnlineSince) {
+      _c2OnlineSince = Date.now();
+      uptimeRow.style.display = 'flex';
+
+      if (_c2UptimeTick) clearInterval(_c2UptimeTick);
+      _c2UptimeTick = setInterval(() => {
+        const secs = Math.floor((Date.now() - _c2OnlineSince) / 1000);
+        const h    = Math.floor(secs / 3600);
+        const m    = Math.floor((secs % 3600) / 60);
+        const s    = secs % 60;
+        uptimeEl.textContent = h > 0
+          ? `${h}h ${String(m).padStart(2,'0')}m ${String(s).padStart(2,'0')}s`
+          : m > 0
+            ? `${m}m ${String(s).padStart(2,'0')}s`
+            : `${s}s`;
+      }, 1000);
+    }
+  } else {
+    // Client went offline — reset uptime
+    _c2OnlineSince = null;
+    if (_c2UptimeTick) { clearInterval(_c2UptimeTick); _c2UptimeTick = null; }
+    uptimeRow.style.display = 'none';
+    uptimeEl.textContent = '—';
+  }
+}
+
+setInterval(() => {
+  document.getElementById('sys-time').textContent = new Date().toLocaleTimeString('en-GB', {hour12: false});
+}, 1000);
+
+function fmtSpeed(b) {
+  if (b == null || isNaN(b)) return '—';
+  if (b > 1e6) return (b/1e6).toFixed(1) + ' MB/s';
+  if (b > 1e3) return (b/1e3).toFixed(0)  + ' KB/s';
+  return b.toFixed(0) + ' B/s';
+}
+
+// Charts
+const COPTS = (extra = {}) => ({
+  responsive: true, maintainAspectRatio: false,
+  animation: { duration: 250 },
+  plugins: { legend: { display: false }, tooltip: { enabled: false } },
+  scales: {
+    x: { display: false },
+    y: {
+      display: true,
+      grid: { color: '#1c2a35', lineWidth: 1 },
+      border: { display: false },
+      ticks: { color: '#4a6070', font: { family: "'IBM Plex Mono'", size: 9 }, maxTicksLimit: 3 },
+      ...extra
+    }
+  },
+  elements: { point: { radius: 0 }, line: { tension: .4, borderWidth: 2 } }
+});
+
+function ds(col) { return { data: Array(N).fill(null), borderColor: col, backgroundColor: col + '14', fill: 'origin', pointRadius: 0 }; }
+const labs = Array(N).fill('');
+
+const cBw   = new Chart(document.getElementById('c-bw'),   { type:'line', data:{ labels:[...labs], datasets:[ds('#29d8f0'), ds('#7c5cbf')] }, options: COPTS() });
+const cConn = new Chart(document.getElementById('c-conn'), { type:'line', data:{ labels:[...labs], datasets:[ds('#00e676'), ds('#ffba08')] }, options: COPTS() });
+const cMl   = new Chart(document.getElementById('c-ml'),   { type:'line', data:{ labels:[...labs], datasets:[ds('#29d8f0'), {...ds('#ff335530'), borderColor:'#ff335550', borderWidth:1, borderDash:[3,3], fill:false}] }, options: COPTS({ min:-1, max:0 }) });
+const cSyn  = new Chart(document.getElementById('c-syn'),  { type:'line', data:{ labels:[...labs], datasets:[ds('#ff3355'), ds('#ffba08')] }, options: COPTS() });
+
+function push(chart, ...vals) {
+  chart.data.labels.shift(); chart.data.labels.push('');
+  vals.forEach((v, i) => { chart.data.datasets[i].data.shift(); chart.data.datasets[i].data.push(v ?? null); });
+  chart.update('none');
+}
+
+function trackFusion(ev) {
+  const r = ev.fusion_reason || '';
+  if (r.includes('ml_only'))    mlHits++;
+  else if (r.includes('rule_only')) ruleHits++;
+  else if (r.includes('both_agree')) { mlHits++; ruleHits++; comboHits++; }
+  const t = mlHits + ruleHits + comboHits || 1;
+  upDet('ml',    Math.round(mlHits    / t * 100));
+  upDet('rules', Math.round(ruleHits  / t * 100));
+  upDet('combo', Math.round(comboHits / t * 100));
+}
+function upDet(k, p) {
+  document.getElementById(`det-${k}`).style.width     = p + '%';
+  document.getElementById(`det-${k}-pct`).textContent = p + '%';
+}
+
+// Alert downloads
+function addAlertFile(meta) {
+  const { filename, title, severity, ts } = meta;
+  if (alertFiles.has(filename)) return;
+  alertFiles.set(filename, meta);
+
+  const empty = document.getElementById('dl-empty');
+  if (empty) empty.remove();
+
+  const list = document.getElementById('dl-list');
+  const sev  = severity || 'MEDIUM';
+  const col  = SEV_COL[sev] || '#ffd740';
+  const time = (ts || '').slice(11, 19) || '--:--:--';
+
+  // Build a friendly description from filename
+  const parts      = (filename || '').replace('.json', '').split('_');
+  const friendlyRules = parts.slice(1).filter(p => p.match(/^[A-Z]+_\d+$/)).join(', ') || 'Pattern detected';
+  const friendlyTitle = SEV_LABEL[sev] + ': ' + (friendlyRules || 'Anomaly');
+
+  const item = document.createElement('div');
+  item.className = 'dl-item';
+  item.innerHTML = `
+    <div class="dl-sev-dot" style="background:${col}"></div>
+    <div class="dl-info">
+      <div class="dl-name">${friendlyTitle}</div>
+      <div class="dl-meta">${time}</div>
+    </div>
+    <button class="dl-btn" onclick="downloadAlert('${filename}')">↓ Save</button>
+  `;
+  list.insertBefore(item, list.firstChild);
+  while (list.children.length > 30) list.removeChild(list.lastChild);
+  document.getElementById('dl-n').textContent = alertFiles.size;
+}
+
+function downloadAlert(filename) {
+  const a = document.createElement('a');
+  a.href = `/alerts/${filename}`;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+async function loadExistingAlerts() {
+  try {
+    const r = await fetch('/alerts');
+    const files = await r.json();
+    files.slice(0, 20).forEach(f => addAlertFile({ filename: f.filename, title: f.title, severity: f.severity, ts: f.timestamp }));
+  } catch {}
+}
+
+function process(ev) {
+  const f   = ev.features || {};
+  const sev = ev.fused_severity || 'OK';
+  const col = SEV_COL[sev]     || '#90b8c8';
+  const ctx = ev.context       || 'unknown';
+
+  // Status badge
+  const badge = document.getElementById('status-badge');
+  if (sev === 'CRITICAL') {
+    badge.className = 'status-badge status-critical';
+    badge.textContent = '⚠ Critical Alert';
+  } else if (sev === 'HIGH') {
+    badge.className = 'status-badge status-alert';
+    badge.textContent = '⚠ High Alert';
+  } else {
+    badge.className = 'status-badge status-live';
+    badge.textContent = '● Live';
+  }
+
+  // Stat cards
+  const bIn  = f.bytes_in;
+  const bOut = f.bytes_out;
+  document.getElementById('sv-in').textContent   = fmtSpeed(bIn);
+  document.getElementById('sv-out').textContent  = fmtSpeed(bOut);
+  document.getElementById('sv-conn').textContent = f.conn_total ?? '—';
+
+  // Colour connections card if high
+  const connCard = document.getElementById('sc-conn');
+  if ((f.conn_total || 0) > 150) { connCard.className = 'stat-card warn'; document.getElementById('sv-conn').style.color = 'var(--amber)'; }
+  else { connCard.className = 'stat-card'; document.getElementById('sv-conn').style.color = 'var(--green)'; }
+
+  if (SEV_ORD[sev] >= 2) {
+    totalAlerts++;
+    const el = document.getElementById('sv-alerts');
+    el.textContent = totalAlerts;
+    el.style.color = totalAlerts > 10 ? 'var(--red)' : 'var(--amber)';
+    document.getElementById('sc-alerts').className = 'stat-card alert-state';
+  }
+
+  // Threat level
+  document.getElementById('tl-verdict').textContent = SEV_LABEL[sev] || sev;
+  document.getElementById('tl-verdict').style.color = col;
+  document.getElementById('tl-conf').textContent   = ev.fused_confidence != null ? (ev.fused_confidence * 100).toFixed(0) + '% confident' : '—';
+  document.getElementById('tl-by').textContent     = FUSION_LABEL[ev.fusion_reason] || ev.fusion_reason || '—';
+  document.getElementById('tl-ai').textContent     = SEV_LABEL[ev.ml_severity] || ev.ml_severity || '—';
+
+  // AI status
+  const warmed = ev.ml_warmed_up;
+  const rem    = ev.ml_warmup_remaining ?? 20;
+  const pct    = warmed ? 100 : Math.max(0, (1 - rem / 20) * 100);
+  document.getElementById('ai-fill').style.width = pct + '%';
+  document.getElementById('ai-pct').textContent  = Math.round(pct) + '%';
+  const ss = ev.score_stats || {};
+
+  if (warmed) {
+    document.getElementById('ai-status').textContent = 'Active & Learning';
+    document.getElementById('ai-status').className  = 'ai-status-txt ai-active';
+    document.getElementById('ai-note').textContent  = `Monitoring your network. Anything unusual compared to your normal pattern will be flagged.`;
+  } else {
+    document.getElementById('ai-status').textContent = `Learning your network… (${20 - rem} / 20 samples)`;
+    document.getElementById('ai-status').className  = 'ai-status-txt ai-warming';
+    document.getElementById('ai-note').textContent  = 'The AI is studying what normal traffic looks like for your computer. Alerts may be limited until complete.';
+  }
+
+  // Activity bar
+  const actTag = document.getElementById('act-tag');
+  actTag.textContent = CTX_LABEL[ctx] || ctx;
+  actTag.className   = 'act-tag act-' + ctx;
+
+  const suppressed = ev.fusion_reason && ev.fusion_reason.includes('suppressed');
+  document.getElementById('suppress-item').style.display = suppressed ? 'flex' : 'none';
+
+  const ema = ev.ema || {};
+  document.getElementById('act-ema').textContent = fmtSpeed(ema.bytes_in);
+
+  // Charts
+  push(cBw,   f.bytes_in ?? 0, f.bytes_out ?? 0);
+  push(cConn, f.conn_total ?? 0, f.unique_dst_ports ?? 0);
+
+  const lowerBound = (ss.mean != null && ss.std != null) ? ss.mean - (2 * ss.std) : null;
+  push(cMl, ev.ml_score ?? 0, lowerBound);
+  push(cSyn, f.syn_rate ?? 0, f.conn_rate ?? 0);
+
+  document.getElementById('bw-cur').textContent   = `↓ ${fmtSpeed(bIn)} · ↑ ${fmtSpeed(bOut)}`;
+  document.getElementById('conn-cur').textContent = `${f.conn_total ?? '—'} open · ${f.unique_dst_ports ?? '—'} servers`;
+  document.getElementById('ml-cur').textContent   = ev.ml_score != null ? ev.ml_score.toFixed(3) : '—';
+  document.getElementById('syn-cur').textContent  = `${f.syn_rate ?? '—'}/s`;
+
+  trackFusion(ev);
+
+  if (SEV_ORD[sev] >= 1 || (ev.rule_hits && ev.rule_hits.length > 0)) {
+    addLogRow(ev, sev, ctx);
+  }
+
+  if (sev === 'CRITICAL') {
+    document.body.classList.add('critspark');
+    setTimeout(() => document.body.classList.remove('critspark'), 1100);
+  }
+}
+
+function describeDetection(ev) {
+  const hits = ev.rule_hits || [];
+  if (!hits.length) return `AI flagged unusual pattern (score ${ev.ml_score?.toFixed(2) ?? '?'})`;
+
+  const ruleNames = {
+    'SCAN_001':  'Port scan — many servers contacted rapidly',
+    'CONN_001':  'Connection spike — unusually many new connections',
+    'VOL_001':   'Bandwidth spike — unusually high data volume',
+    'SYN_001':   'Flood attempt — rapid connection requests',
+    'SNORT_001': 'Signature match — known attack pattern',
+  };
+
+  return hits.map(h => ruleNames[h.rule_id] || h.description).join(' · ');
+}
+
+function addLogRow(ev, sev, ctx) {
+  const body = document.getElementById('log-body');
+  const emp  = document.getElementById('log-empty');
+  if (emp) emp.remove();
+  logCount++;
+  document.getElementById('log-n').textContent = logCount;
+
+  const ts   = ev.timestamp ? ev.timestamp.slice(11, 19) : '--:--:--';
+  const desc = describeDetection(ev);
+  const conf = ev.fused_confidence != null ? (ev.fused_confidence * 100).toFixed(0) + '%' : '—';
+  const what = CTX_LABEL[ctx] || ctx;
+
+  const row = document.createElement('div');
+  row.className = 'log-row';
+  row.innerHTML = `
+    <span class="log-time">${ts}</span>
+    <span class="log-sev sev-${sev}">${SEV_LABEL[sev] || sev}</span>
+    <span class="log-what">${what}</span>
+    <span class="log-desc">${desc}</span>
+    <span class="log-conf">${conf}</span>
+  `;
+  body.insertBefore(row, body.firstChild);
+  while (body.children.length > 80) body.removeChild(body.lastChild);
+}
+
+// WebSocket
+let ws, rt;
+function connect() {
+  ws = new WebSocket(WS_URL);
+  ws.onmessage = e => {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.__type === 'alert_file') { addAlertFile(d); return; }
+      if (d.__type === 'heartbeat') {
+        updateC2Status(d.client_online, d.agent_id, d.last_seen_ts);
+        return;
+      }
+      process(d);
+    } catch {}
+  };
+  ws.onclose = () => {
+    document.getElementById('status-badge').className = 'status-badge status-offline';
+    document.getElementById('status-badge').textContent = 'Offline';
+    rt = setTimeout(connect, 3000);
+  };
+  ws.onerror = () => {};
+}
+
+loadExistingAlerts();
+connect();
+</script>
+</body>
+</html>

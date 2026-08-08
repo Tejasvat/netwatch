@@ -1,0 +1,39 @@
+{
+  "rules": {
+    "SCAN_001": {
+      "enabled": true,
+      "sigma_mult": 1,
+      "abs_floor": 12,
+      "severity": "CRITICAL"
+    },
+    "CONN_001": {
+      "enabled": true,
+      "sigma_mult": 3,
+      "abs_floor": 4,
+      "severity": "CRITICAL"
+    },
+    "VOL_001": {
+      "enabled": true,
+      "sigma_mult": 3.5,
+      "abs_floor": 100000000,
+      "severity": "CRITICAL"
+    },
+    "SYN_001": {
+      "enabled": true,
+      "sigma_mult": 4,
+      "abs_floor": 15,
+      "severity": "HIGH"
+    },
+    "SNORT_001": {
+      "enabled": true,
+      "severity": "CRITICAL"
+    }
+  },
+  "global": {
+    "suppress_benign_contexts": false,
+    "benign_suppression_rules": [
+      "VOL_001",
+      "CONN_001"
+    ]
+  }
+}

@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NetWatch — Settings</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+:root {
+  --bg:     #07090b;
+  --bg1:    #0d1117;
+  --bg2:    #111820;
+  --bg3:    #161e28;
+  --line:   #1c2a35;
+  --line2:  #243040;
+  --dim:    #334455;
+  --muted:  #4a6070;
+  --text:   #90b8c8;
+  --text2:  #c0d8e4;
+  --bright: #e4f0f8;
+  --green:  #00e676;
+  --cyan:   #29d8f0;
+  --amber:  #ffba08;
+  --red:    #ff3355;
+  --mono:   'IBM Plex Mono', monospace;
+  --sans:   'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { min-height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.5; }
+body::after { content:''; position:fixed; inset:0; background:repeating-linear-gradient(to bottom,transparent 0,transparent 3px,rgba(0,0,0,.04) 3px,rgba(0,0,0,.04) 4px); pointer-events:none; z-index:1000; }
+
+/* ── TOPBAR ── */
+#topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  height: 52px; padding: 0 24px;
+  border-bottom: 1px solid var(--line2); background: var(--bg1);
+  position: sticky; top: 0; z-index: 10;
+}
+.logo { display: flex; align-items: center; gap: 10px; }
+.logo-icon { width: 28px; height: 28px; border-radius: 5px; background: linear-gradient(135deg,#00e676,#00bcd4); display:flex; align-items:center; justify-content:center; }
+.logo-text { font-family: var(--mono); font-size: 15px; font-weight: 700; color: var(--bright); letter-spacing: 1px; }
+.logo-text span { color: var(--green); }
+.page-badge { font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 1px; padding: 4px 12px; border: 1px solid var(--amber); color: var(--amber); border-radius: 3px; }
+.back-btn { display: flex; align-items: center; gap: 6px; padding: 6px 16px; border: 1px solid var(--line2); border-radius: 4px; color: var(--muted); font-size: 13px; font-weight: 500; text-decoration: none; transition: all .2s; }
+.back-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+
+/* ── LAYOUT ── */
+.page { max-width: 820px; margin: 0 auto; padding: 28px 20px 60px; }
+
+/* ── INFO BANNER ── */
+.info-banner {
+  background: var(--bg2); border: 1px solid var(--line2); border-left: 3px solid var(--cyan);
+  border-radius: 4px; padding: 14px 18px; margin-bottom: 28px;
+  font-size: 13px; color: var(--text); line-height: 1.7;
+}
+.info-banner strong { color: var(--bright); }
+
+/* ── LIVE THRESHOLDS ── */
+.thresh-section { margin-bottom: 28px; }
+.section-title { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
+.section-title::after { content: ''; flex: 1; height: 1px; background: var(--line2); }
+.section-subtitle { font-size: 13px; color: var(--dim); margin-bottom: 16px; margin-top: -8px; }
+
+.thresh-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line2); border-radius: 6px; overflow: hidden; border: 1px solid var(--line2); }
+.thresh-cell { background: var(--bg1); padding: 16px 18px; }
+.thresh-name  { font-size: 11px; font-weight: 700; letter-spacing: .5px; color: var(--muted); margin-bottom: 6px; }
+.thresh-val   { font-family: var(--mono); font-size: 22px; font-weight: 700; color: var(--text2); letter-spacing: -0.5px; line-height: 1; }
+.thresh-unit  { font-size: 11px; color: var(--dim); margin-top: 4px; }
+.thresh-note  { font-size: 11px; color: var(--cyan); margin-top: 2px; }
+
+.refresh-btn { padding: 5px 14px; border: 1px solid var(--line2); border-radius: 3px; font-family: var(--mono); font-size: 11px; color: var(--muted); background: transparent; cursor: pointer; transition: all .2s; }
+.refresh-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+
+/* ── RULE CARDS ── */
+.rules-section { margin-bottom: 28px; }
+
+.rule-card {
+  background: var(--bg1); border: 1px solid var(--line2);
+  border-radius: 6px; margin-bottom: 14px; overflow: hidden;
+  transition: border-color .2s;
+}
+.rule-card.disabled { opacity: .55; }
+.rule-card:last-child { margin-bottom: 0; }
+
+.rule-head {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 18px; border-bottom: 1px solid var(--line2);
+  background: var(--bg2);
+}
+
+.rule-indicator { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; transition: background .3s; }
+.rule-indicator.on  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.rule-indicator.off { background: var(--dim); }
+
+.rule-head-info { flex: 1; min-width: 0; }
+.rule-name  { font-size: 14px; font-weight: 600; color: var(--bright); }
+.rule-tagline { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+.rule-live-thresh { font-family: var(--mono); font-size: 11px; color: var(--dim); text-align: right; flex-shrink: 0; }
+.rule-live-thresh strong { color: var(--cyan); }
+
+/* Toggle */
+.toggle-wrap { display: flex; align-items: center; gap: 8px; cursor: pointer; flex-shrink: 0; }
+.toggle { position: relative; width: 36px; height: 20px; }
+.toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+.toggle-track { position: absolute; inset: 0; background: var(--dim); border-radius: 10px; cursor: pointer; transition: background .25s; }
+.toggle input:checked + .toggle-track { background: var(--green); }
+.toggle-thumb { position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; background: var(--bg); border-radius: 50%; transition: transform .25s; }
+.toggle input:checked ~ .toggle-thumb { transform: translateX(16px); }
+.toggle-lbl { font-size: 12px; font-weight: 600; color: var(--muted); width: 26px; }
+
+.rule-body { padding: 16px 18px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.rule-body.two-col { grid-template-columns: 1fr 1fr; }
+
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field-label { font-size: 12px; font-weight: 600; color: var(--text2); }
+.field-desc  { font-size: 11px; color: var(--dim); line-height: 1.5; }
+
+input[type="number"], select {
+  width: 100%; background: var(--bg3); border: 1px solid var(--line2); border-radius: 4px;
+  color: var(--text2); font-family: var(--mono); font-size: 13px; padding: 8px 10px;
+  outline: none; transition: border-color .2s; -moz-appearance: textfield;
+}
+input[type="number"]:focus, select:focus { border-color: var(--cyan); }
+input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+select option { background: var(--bg2); }
+.sev-low  { color: var(--cyan); }
+.sev-med  { color: #ffd740; }
+.sev-high { color: var(--amber); }
+.sev-crit { color: var(--red); }
+
+/* ── GLOBAL SECTION ── */
+.global-section { margin-bottom: 28px; }
+.global-card { background: var(--bg1); border: 1px solid var(--line2); border-radius: 6px; overflow: hidden; }
+.global-row {
+  display: flex; align-items: flex-start; gap: 16px;
+  padding: 16px 18px; border-bottom: 1px solid var(--line2);
+}
+.global-row:last-child { border-bottom: none; }
+.global-row-info { flex: 1; }
+.global-row-title { font-size: 14px; font-weight: 600; color: var(--bright); margin-bottom: 4px; }
+.global-row-desc  { font-size: 12px; color: var(--dim); line-height: 1.6; }
+.global-row-control { flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding-top: 2px; }
+
+.check-list { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
+.check-item { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text2); cursor: pointer; }
+.check-item input { width: 15px; height: 15px; cursor: pointer; accent-color: var(--green); }
+
+/* ── BUTTONS ── */
+.btn-bar { display: flex; gap: 10px; justify-content: flex-end; padding-top: 8px; }
+.btn { padding: 9px 22px; border: 1px solid; border-radius: 4px; font-family: var(--sans); font-size: 13px; font-weight: 600; cursor: pointer; transition: all .2s; }
+.btn-save    { border-color: var(--green); color: var(--green); background: transparent; }
+.btn-save:hover { background: var(--green); color: var(--bg); }
+.btn-cancel  { border-color: var(--line2); color: var(--muted); background: transparent; }
+.btn-cancel:hover { border-color: var(--text2); color: var(--text2); }
+.btn-reset   { border-color: var(--line); color: var(--dim); background: transparent; }
+.btn-reset:hover { border-color: var(--red); color: var(--red); }
+
+/* ── TOAST ── */
+#toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: 4px; font-size: 13px; font-weight: 600; letter-spacing: .3px; opacity: 0; transition: opacity .3s; z-index: 999; border: 1px solid; }
+#toast.show { opacity: 1; }
+#toast.success { border-color: var(--green); color: var(--green); background: rgba(0,230,118,.08); }
+#toast.error   { border-color: var(--red);   color: var(--red);   background: rgba(255,51,85,.08); }
+#toast.info    { border-color: var(--cyan);  color: var(--cyan);  background: rgba(41,216,240,.08); }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div style="display:flex;align-items:center;gap:14px">
+    <div class="logo">
+      <div class="logo-icon">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+          <circle cx="8" cy="8" r="3" fill="white" opacity=".9"/>
+          <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2" stroke="white" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <span class="logo-text">Net<span>Watch</span></span>
+    </div>
+    <div class="page-badge">⚙ SETTINGS</div>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span id="tb-status" style="font-size:12px;color:var(--dim)">Loading…</span>
+    <a class="back-btn" href="/">← Back to Dashboard</a>
+  </div>
+</div>
+
+<div class="page">
+
+  <!-- INFO BANNER -->
+  <div class="info-banner">
+    <strong>How detection works:</strong> NetWatch watches your network and compares what it sees to what's <em>normal for you</em>.
+    These settings let you tune how sensitive each detection rule is.
+    If you're getting too many false alerts, <strong>raise the sigma value</strong> (makes it less sensitive).
+    If threats are being missed, <strong>lower it</strong>.
+  </div>
+
+  <!-- LIVE THRESHOLDS -->
+  <div class="thresh-section">
+    <div class="section-title">
+      Current Detection Thresholds
+      <button class="refresh-btn" onclick="loadThresholds()">↺ Refresh</button>
+    </div>
+    <div class="section-subtitle">These update automatically as your network baseline evolves. An alert fires when your traffic exceeds these values.</div>
+    <div class="thresh-grid">
+      <div class="thresh-cell">
+        <div class="thresh-name">Port Scan Rule</div>
+        <div class="thresh-val" id="th-scan">—</div>
+        <div class="thresh-unit">unique servers / 10s</div>
+        <div class="thresh-note" id="th-scan-note">—</div>
+      </div>
+      <div class="thresh-cell">
+        <div class="thresh-name">Connection Spike Rule</div>
+        <div class="thresh-val" id="th-conn">—</div>
+        <div class="thresh-unit">new connections / sec</div>
+        <div class="thresh-note" id="th-conn-note">—</div>
+      </div>
+      <div class="thresh-cell">
+        <div class="thresh-name">Bandwidth Rule</div>
+        <div class="thresh-val" id="th-vol">—</div>
+        <div class="thresh-unit">MB/s combined</div>
+        <div class="thresh-note" id="th-vol-note">—</div>
+      </div>
+      <div class="thresh-cell">
+        <div class="thresh-name">SYN Flood Rule</div>
+        <div class="thresh-val" id="th-syn">—</div>
+        <div class="thresh-unit">SYN packets / sec</div>
+        <div class="thresh-note" id="th-syn-note">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RULES -->
+  <div class="rules-section">
+    <div class="section-title">Detection Rules</div>
+    <div id="rules-container"><!-- populated by JS --></div>
+  </div>
+
+  <!-- GLOBAL -->
+  <div class="global-section">
+    <div class="section-title">Smart Suppression</div>
+
+    <div class="global-card">
+      <div class="global-row">
+        <div class="global-row-info">
+          <div class="global-row-title">Reduce sensitivity during normal activity</div>
+          <div class="global-row-desc">
+            When NetWatch detects you're streaming video, doing a large download, or uploading files,
+            it automatically reduces sensitivity so these don't trigger false alerts.
+            Suspicious connection patterns (SYN floods, port scans) are <strong style="color:var(--text2)">always detected</strong> regardless.
+          </div>
+          <div class="check-list">
+            <label class="check-item"><input type="checkbox" id="sup-VOL_001" checked> Bandwidth spikes</label>
+            <label class="check-item"><input type="checkbox" id="sup-CONN_001" checked> Connection rate spikes</label>
+            <label class="check-item"><input type="checkbox" id="sup-SCAN_001"> Port scan (not recommended to suppress)</label>
+          </div>
+        </div>
+        <div class="global-row-control">
+          <label class="toggle-wrap">
+            <label class="toggle">
+              <input type="checkbox" id="g-suppress" checked>
+              <div class="toggle-track"></div>
+              <div class="toggle-thumb"></div>
+            </label>
+            <span class="toggle-lbl" id="g-suppress-lbl">ON</span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BUTTONS -->
+  <div class="btn-bar">
+    <button class="btn btn-reset"  onclick="resetDefaults()">Reset to Defaults</button>
+    <button class="btn btn-cancel" onclick="loadSettings()">Discard Changes</button>
+    <button class="btn btn-save"   onclick="saveSettings()">Save Settings</button>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+// Rule definitions with friendly descriptions
+const RULES = {
+  SCAN_001: {
+    name:         'Port Scan Detection',
+    tagline:      'Fires when your PC contacts an unusual number of different servers very quickly',
+    explain:      'Attackers often probe many ports rapidly. Normal browsing contacts a handful of servers; a port scan hits hundreds.',
+    sigma_label:  'Sensitivity (sigma)',
+    sigma_hint:   'How many standard deviations above your normal before an alert fires. Higher = less sensitive. Recommended: 3–4.',
+    floor_label:  'Minimum trigger threshold',
+    floor_hint:   'Never alert below this many unique servers, even if it\'s above your baseline. Prevents noise on very quiet networks.',
+    floor_unit:   'unique servers',
+    floor_step:   1,
+    thresh_key:   'SCAN_001_threshold',
+    thresh_unit:  'servers',
+  },
+  CONN_001: {
+    name:         'Connection Spike',
+    tagline:      'Fires when new connections are being created far faster than usual',
+    explain:      'Malware, port scanners, and brute-force tools open connections very rapidly. Normal use creates a few per second.',
+    sigma_label:  'Sensitivity (sigma)',
+    sigma_hint:   'Higher = less sensitive. Recommended: 3. Lower to catch subtle spikes, raise to reduce false positives.',
+    floor_label:  'Minimum trigger rate',
+    floor_hint:   'Never alert below this connection rate per second. Prevents false alarms on quiet networks.',
+    floor_unit:   'connections/sec',
+    floor_step:   0.5,
+    thresh_key:   'CONN_001_threshold',
+    thresh_unit:  'conn/s',
+  },
+  VOL_001: {
+    name:         'Bandwidth Spike',
+    tagline:      'Fires when total network traffic is much higher than your normal pattern',
+    explain:      'Large unexpected data transfers can indicate data exfiltration. This rule is auto-suppressed during streaming and downloads.',
+    sigma_label:  'Sensitivity (sigma)',
+    sigma_hint:   'Recommended: 3.5 or higher since legitimate downloads are large. Lower values will trigger during normal downloads.',
+    floor_label:  'Minimum trigger (bytes/sec)',
+    floor_hint:   'Never alert below this bandwidth. 30000000 = 30 MB/s. Raise if you have a very fast connection.',
+    floor_unit:   'bytes/sec',
+    floor_step:   1000000,
+    thresh_key:   'VOL_001_threshold',
+    thresh_unit:  'MB/s',
+    thresh_fmt:   v => (v / 1e6).toFixed(1),
+  },
+  SYN_001: {
+    name:         'SYN Flood / Brute Force',
+    tagline:      'Fires when rapid connection attempts are detected — a hallmark of attacks',
+    explain:      'SYN packets start a connection. A flood of them is the signature of SYN-flood DDoS attacks and brute-force login attempts.',
+    sigma_label:  'Sensitivity (sigma)',
+    sigma_hint:   'Recommended: 4+ since some apps legitimately make many quick connections. Lower only if you need to catch subtle floods.',
+    floor_label:  'Minimum trigger rate',
+    floor_hint:   'Never alert below this SYN rate per second. 15 is a safe floor for most home/office networks.',
+    floor_unit:   'SYN packets/sec',
+    floor_step:   1,
+    thresh_key:   'SYN_001_threshold',
+    thresh_unit:  '/s',
+  },
+  SNORT_001: {
+    name:         'Snort Deep Inspection (DPI)',
+    tagline:      'Fires when a known malicious network signature is detected by Snort',
+    explain:      'Snort checks actual packet contents against a database of known attack signatures. These are very high-confidence detections.',
+    snort_only:   true,
+  },
+};
+
+const SEV_OPTIONS = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+let currentSettings = null;
+
+function toast(msg, type = 'success') {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.className = 'show ' + type;
+  setTimeout(() => { el.className = ''; }, 2800);
+}
+
+async function loadThresholds() {
+  try {
+    const r = await fetch('/settings/thresholds');
+    const d = await r.json();
+    const samples = d.samples ?? 0;
+
+    function setTh(id, val, noteId, unit, fmt) {
+      const display = fmt ? fmt(val) : (val != null ? (typeof val === 'number' ? val.toFixed(1) : val) : '—');
+      document.getElementById(id).textContent   = display;
+      document.getElementById(noteId).textContent = samples >= 30 ? `From ${samples} samples` : `Still learning (${samples}/30 min)`;
+    }
+
+    setTh('th-scan', d.SCAN_001_threshold, 'th-scan-note', 'servers');
+    setTh('th-conn', d.CONN_001_threshold, 'th-conn-note', 'conn/s');
+    setTh('th-vol',  d.VOL_001_threshold,  'th-vol-note',  'MB/s', v => v != null ? (v/1e6).toFixed(2) + ' MB/s' : '—');
+    setTh('th-syn',  d.SYN_001_threshold,  'th-syn-note',  '/s');
+
+    document.getElementById('tb-status').textContent = `Baseline: ${samples} samples collected`;
+  } catch {
+    document.getElementById('tb-status').textContent = 'Backend offline';
+  }
+}
+
+function buildRules(settings) {
+  const container = document.getElementById('rules-container');
+  container.innerHTML = '';
+  const rulesCfg = settings.rules || {};
+
+  Object.entries(RULES).forEach(([id, meta]) => {
+    const r       = rulesCfg[id] || {};
+    const enabled = r.enabled !== false;
+    const sigma   = r.sigma_mult ?? 3.0;
+    const floor   = r.abs_floor  ?? 0;
+    const sev     = r.severity   || 'HIGH';
+
+    const card = document.createElement('div');
+    card.className = 'rule-card ' + (enabled ? 'enabled' : 'disabled');
+    card.id = 'card-' + id;
+
+    const sevOptions = SEV_OPTIONS.map(s =>
+      `<option value="${s}" ${s === sev ? 'selected' : ''}>${s}</option>`
+    ).join('');
+
+    if (meta.snort_only) {
+      card.innerHTML = `
+        <div class="rule-head">
+          <div class="rule-indicator ${enabled ? 'on' : 'off'}" id="ind-${id}"></div>
+          <div class="rule-head-info">
+            <div class="rule-name">${meta.name}</div>
+            <div class="rule-tagline">${meta.tagline}</div>
+          </div>
+          <label class="toggle-wrap" onclick="toggleRule('${id}')">
+            <label class="toggle"><input type="checkbox" id="en-${id}" ${enabled ? 'checked' : ''} onchange="toggleRule('${id}')"><div class="toggle-track"></div><div class="toggle-thumb"></div></label>
+            <span class="toggle-lbl" id="enlbl-${id}">${enabled ? 'ON' : 'OFF'}</span>
+          </label>
+        </div>
+        <div class="rule-body two-col">
+          <div class="field">
+            <div class="field-label">Alert Severity</div>
+            <select id="sev-${id}">${sevOptions}</select>
+            <div class="field-desc">Snort alerts are always 100% confident — only severity needs setting.</div>
+          </div>
+          <div class="field">
+            <div class="field-label">About this rule</div>
+            <div class="field-desc">${meta.explain}</div>
+          </div>
+        </div>
+      `;
+    } else {
+      card.innerHTML = `
+        <div class="rule-head">
+          <div class="rule-indicator ${enabled ? 'on' : 'off'}" id="ind-${id}"></div>
+          <div class="rule-head-info">
+            <div class="rule-name">${meta.name}</div>
+            <div class="rule-tagline">${meta.tagline}</div>
+          </div>
+          <div class="rule-live-thresh">Fires above <strong id="liveth-${id}">—</strong> ${meta.thresh_unit || meta.floor_unit}</div>
+          <label class="toggle-wrap">
+            <label class="toggle"><input type="checkbox" id="en-${id}" ${enabled ? 'checked' : ''} onchange="toggleRule('${id}')"><div class="toggle-track"></div><div class="toggle-thumb"></div></label>
+            <span class="toggle-lbl" id="enlbl-${id}">${enabled ? 'ON' : 'OFF'}</span>
+          </label>
+        </div>
+        <div class="rule-body">
+          <div class="field">
+            <div class="field-label">${meta.sigma_label}</div>
+            <input type="number" id="sigma-${id}" value="${sigma}" min="1" max="10" step="0.5">
+            <div class="field-desc">${meta.sigma_hint}</div>
+          </div>
+          <div class="field">
+            <div class="field-label">${meta.floor_label} (${meta.floor_unit})</div>
+            <input type="number" id="floor-${id}" value="${floor}" min="0" step="${meta.floor_step}">
+            <div class="field-desc">${meta.floor_hint}</div>
+          </div>
+          <div class="field">
+            <div class="field-label">Alert Severity</div>
+            <select id="sev-${id}">${sevOptions}</select>
+            <div class="field-desc">${meta.explain}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    container.appendChild(card);
+  });
+
+  // Fill in live thresholds
+  loadThresholds().then(() => {
+    // Update live threshold labels in rule cards
+    const map = { SCAN_001: 'th-scan', CONN_001: 'th-conn', VOL_001: 'th-vol', SYN_001: 'th-syn' };
+    Object.entries(map).forEach(([rid, thid]) => {
+      const el = document.getElementById('liveth-' + rid);
+      if (el) el.textContent = document.getElementById(thid)?.textContent || '—';
+    });
+  });
+}
+
+function toggleRule(id) {
+  const cb  = document.getElementById('en-' + id);
+  const lbl = document.getElementById('enlbl-' + id);
+  const ind = document.getElementById('ind-' + id);
+  const card= document.getElementById('card-' + id);
+  const on  = cb.checked;
+  lbl.textContent  = on ? 'ON' : 'OFF';
+  ind.className    = 'rule-indicator ' + (on ? 'on' : 'off');
+  card.className   = 'rule-card ' + (on ? 'enabled' : 'disabled');
+}
+
+async function loadSettings() {
+  try {
+    const r = await fetch('/settings');
+    currentSettings = await r.json();
+    buildRules(currentSettings);
+    const g = currentSettings.global || {};
+    document.getElementById('g-suppress').checked = g.suppress_benign_contexts !== false;
+    document.getElementById('g-suppress-lbl').textContent = g.suppress_benign_contexts !== false ? 'ON' : 'OFF';
+    const sup = g.benign_suppression_rules || [];
+    ['VOL_001', 'CONN_001', 'SCAN_001'].forEach(id => {
+      const el = document.getElementById('sup-' + id);
+      if (el) el.checked = sup.includes(id);
+    });
+    toast('Settings loaded', 'info');
+  } catch {
+    toast('Cannot reach backend', 'error');
+  }
+}
+
+async function saveSettings() {
+  const rulesUpdate = {};
+  Object.keys(RULES).forEach(id => {
+    const en  = document.getElementById('en-' + id)?.checked ?? true;
+    const sev = document.getElementById('sev-' + id)?.value || 'HIGH';
+    if (RULES[id].snort_only) {
+      rulesUpdate[id] = { enabled: en, severity: sev };
+    } else {
+      const sigma = parseFloat(document.getElementById('sigma-' + id)?.value || 3);
+      const floor = parseFloat(document.getElementById('floor-' + id)?.value || 0);
+      rulesUpdate[id] = { enabled: en, sigma_mult: sigma, abs_floor: floor, severity: sev };
+    }
+  });
+
+  const sup = ['VOL_001', 'CONN_001', 'SCAN_001'].filter(id => document.getElementById('sup-' + id)?.checked);
+  const globalUpdate = {
+    suppress_benign_contexts: document.getElementById('g-suppress').checked,
+    benign_suppression_rules: sup,
+  };
+
+  try {
+    const r = await fetch('/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rules: rulesUpdate, global: globalUpdate }),
+    });
+    if (r.ok) {
+      currentSettings = await r.json();
+      toast('Settings saved ✓');
+      loadThresholds();
+    } else {
+      toast('Save failed: ' + r.status, 'error');
+    }
+  } catch {
+    toast('Cannot reach backend', 'error');
+  }
+}
+
+async function resetDefaults() {
+  if (!confirm('Reset all settings back to their defaults?')) return;
+  try {
+    const r = await fetch('/settings/defaults');
+    const defaults = await r.json();
+    buildRules(defaults);
+    document.getElementById('g-suppress').checked = true;
+    document.getElementById('g-suppress-lbl').textContent = 'ON';
+    ['VOL_001', 'CONN_001'].forEach(id => { const el = document.getElementById('sup-' + id); if(el) el.checked = true; });
+    document.getElementById('sup-SCAN_001').checked = false;
+    toast('Defaults loaded — click Save Settings to apply', 'info');
+  } catch {
+    toast('Cannot reach backend', 'error');
+  }
+}
+
+document.getElementById('g-suppress').addEventListener('change', function () {
+  document.getElementById('g-suppress-lbl').textContent = this.checked ? 'ON' : 'OFF';
+});
+
+loadSettings();
+setInterval(loadThresholds, 15000);
+</script>
+</body>
+</html>
