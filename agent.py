@@ -6,6 +6,7 @@ import time
 import os
 import json
 import sys
+import uuid
 from collections import defaultdict, deque
 from datetime import datetime, timezone
 
@@ -27,7 +28,25 @@ def _load_config() -> dict:
 CONFIG = _load_config()
 BACKEND_URL = os.environ.get("NETWATCH_BACKEND_URL", CONFIG.get("backend_url", "")).rstrip("/")
 API_SECRET_KEY = os.environ.get("NETWATCH_API_SECRET_KEY", CONFIG.get("api_secret_key", ""))
-AGENT_ID = os.environ.get("NETWATCH_AGENT_ID", CONFIG.get("agent_id", "unconfigured-agent"))
+
+
+def _get_agent_id() -> str:
+    configured_id = os.environ.get("NETWATCH_AGENT_ID", CONFIG.get("agent_id", "auto"))
+    if configured_id and configured_id != "auto":
+        return configured_id
+
+    generated_id = f"device-{uuid.uuid4().hex[:12]}"
+    CONFIG["agent_id"] = generated_id
+    try:
+        with open(CONFIG_PATH, "w", encoding="utf-8") as config_file:
+            json.dump(CONFIG, config_file, indent=2)
+    except OSError:
+        # Still keep the generated ID for this session if the install directory is read-only.
+        pass
+    return generated_id
+
+
+AGENT_ID = _get_agent_id()
 
 INTERVAL  = 2
 TIER      = "remote_client"

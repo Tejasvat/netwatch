@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from fusion       import fuse
 from ml_detector  import AnomalyDetector
 from rules        import (
-    evaluate_rules,
+    AdaptiveRuleEngine,
     get_current_thresholds,
     get_default_settings,
     get_settings,
@@ -34,10 +34,12 @@ app.add_middleware(
 )
 
 # ── State ─────────────────────────────────────────────────────────────────────
-detector    = AnomalyDetector()
+detectors: dict[str, AnomalyDetector] = {}
+rule_engines: dict[str, AdaptiveRuleEngine] = {}
 history:    deque = deque(maxlen=1000)
 ws_clients: Set[WebSocket] = set()
-ALERTS_DIR  = "alert_reports"
+STATE_ROOT  = os.environ.get("NETWATCH_STATE_DIR", "data")
+ALERTS_DIR  = os.path.join(STATE_ROOT, "alert_reports")
 os.makedirs(ALERTS_DIR, exist_ok=True)
 AGENT_INSTALLER_PATH = os.environ.get(
     "AGENT_INSTALLER_PATH", os.path.join("dist", "NetWatchSetup-v4.0.exe")
@@ -49,6 +51,18 @@ _last_seen_ts: str | None = None       # ISO timestamp for display
 _client_agent_id: str | None = None    # ID of the connected client
 
 SEVERITY_ORDER = {"OK": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
+
+
+def _get_detector(agent_id: str) -> AnomalyDetector:
+    if agent_id not in detectors:
+        detectors[agent_id] = AnomalyDetector(agent_id)
+    return detectors[agent_id]
+
+
+def _get_rule_engine(agent_id: str) -> AdaptiveRuleEngine:
+    if agent_id not in rule_engines:
+        rule_engines[agent_id] = AdaptiveRuleEngine()
+    return rule_engines[agent_id]
 
 
 # ── Auth helper ───────────────────────────────────────────────────────────────
@@ -160,8 +174,10 @@ async def ingest(event: AgentEvent, request: Request):
     _touch_heartbeat(event.agent_id)
 
     features = event.features
+    detector = _get_detector(event.agent_id)
+    rule_engine = _get_rule_engine(event.agent_id)
     context  = detector.current_context
-    hits     = evaluate_rules(features, context)
+    hits     = rule_engine.evaluate(features, context)
     ml_score, ml_severity = detector.score(features)
     context  = detector.current_context
     fusion_result = fuse(hits, ml_score, ml_severity, context)
@@ -215,16 +231,18 @@ async def get_history(n: int = 100):
 
 @app.get("/status")
 async def get_status():
+    detector = _get_detector(_client_agent_id) if _client_agent_id else None
+    rule_engine = _get_rule_engine(_client_agent_id) if _client_agent_id else None
     return {
-        "ml_warmed_up":        detector.is_warmed_up,
-        "ml_samples":          detector.samples_collected,
-        "ml_warmup_remaining": detector.warmup_needed,
-        "current_context":     detector.current_context,
-        "score_stats":         detector.score_stats,
-        "ema":                 detector.ema_snapshot,
+        "ml_warmed_up":        detector.is_warmed_up if detector else False,
+        "ml_samples":          detector.samples_collected if detector else 0,
+        "ml_warmup_remaining": detector.warmup_needed if detector else 30,
+        "current_context":     detector.current_context if detector else "warming_up",
+        "score_stats":         detector.score_stats if detector else {"mean": None, "std": None, "p95": None},
+        "ema":                 detector.ema_snapshot if detector else {},
         "event_count":         len(history),
         "connected_dashboards":len(ws_clients),
-        "thresholds":          get_current_thresholds(),
+        "thresholds":          rule_engine.current_thresholds() if rule_engine else {},
         # Heartbeat fields
         "client_online":       _client_online(),
         "last_seen_ts":        _last_seen_ts,
