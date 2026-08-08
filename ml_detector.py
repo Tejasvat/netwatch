@@ -2,6 +2,7 @@
 
 import os
 import json
+import re
 import numpy as np
 from collections import deque
 from datetime import datetime, timezone
@@ -9,11 +10,10 @@ from datetime import datetime, timezone
 import joblib
 from sklearn.ensemble import IsolationForest
 
-WARMUP_SAMPLES  = 20   
+WARMUP_SAMPLES  = 30  # agent reports every 2 seconds: approximately one minute
 REFIT_EVERY     = 100      
 CONTAMINATION   = 0.04    
-MODEL_FILE      = "ml_baseline.pkl"
-QUARANTINE_FILE = "quarantined_anomalies.json"
+STATE_ROOT      = os.environ.get("NETWATCH_STATE_DIR", "data")
 
 EMA_ALPHA = 0.05
 
@@ -73,8 +73,19 @@ SIGMA_THRESHOLDS = {
 }
 
 
+def _safe_agent_directory(agent_id: str) -> str:
+    """Keep agent IDs from escaping the per-agent state directory."""
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", agent_id).strip("._")
+    return safe or "unknown-agent"
+
+
 class AnomalyDetector:
-    def __init__(self):
+    def __init__(self, agent_id: str):
+        self.agent_id = agent_id
+        self.state_dir = os.path.join(STATE_ROOT, "agents", _safe_agent_directory(agent_id))
+        self.model_file = os.path.join(self.state_dir, "ml_baseline.pkl")
+        self.quarantine_file = os.path.join(self.state_dir, "quarantined_anomalies.jsonl")
+        os.makedirs(self.state_dir, exist_ok=True)
         self._model: IsolationForest | None = None
         self._fitted  = False
         self._sample_count = 0
@@ -94,17 +105,17 @@ class AnomalyDetector:
         self._load_if_exists()
 
     def _load_if_exists(self):
-        if not os.path.exists(MODEL_FILE):
+        if not os.path.exists(self.model_file):
             return
         try:
-            state = joblib.load(MODEL_FILE)
+            state = joblib.load(self.model_file)
             self._buffer        = state.get("buffer",        self._buffer)
             self._score_history = state.get("score_history", self._score_history)
             self._ema           = state.get("ema",           self._ema)
             self._model         = state.get("model",         None)
             self._sample_count  = state.get("sample_count",  0)
             self._fitted        = self._model is not None
-            print(f"[ML] Loaded baseline from {MODEL_FILE} ({self._sample_count} samples)")
+            print(f"[ML] Loaded baseline for {self.agent_id} ({self._sample_count} samples)")
         except Exception as e:
             print(f"[ML] Could not load baseline: {e} — starting fresh")
 
@@ -116,7 +127,7 @@ class AnomalyDetector:
                 "ema":           self._ema,
                 "model":         self._model,
                 "sample_count":  self._sample_count,
-            }, MODEL_FILE)
+            }, self.model_file)
         except Exception as e:
             print(f"[ML] Save error: {e}")
 
@@ -137,7 +148,8 @@ class AnomalyDetector:
             contamination=CONTAMINATION,
             max_samples=min(512, len(self._buffer)),
             random_state=42,
-            n_jobs=-1,
+            # One worker avoids process-permission failures on Windows agents.
+            n_jobs=1,
         )
         self._model.fit(X)
         self._fitted = True
@@ -192,7 +204,7 @@ class AnomalyDetector:
                 "ml_score":  round(score, 4),
                 "features":  features,
             }
-            with open(QUARANTINE_FILE, "a") as f:
+            with open(self.quarantine_file, "a", encoding="utf-8") as f:
                 f.write(json.dumps(record) + "\n")
         except Exception:
             pass

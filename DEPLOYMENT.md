@@ -35,3 +35,15 @@ The dashboard presents a consent screen before exposing the agent download.
 Only distribute it to device owners or administrators who have authorized
 monitoring. Keep a privacy notice and ensure the telemetry disclosure matches
 the version of the agent you ship.
+
+## Per-device learning and persistence
+
+Each device now stores its ML baseline and high/critical ML quarantines under
+`data/agents/<agent_id>/`. Alert reports are stored under `data/alert_reports/`.
+At the default two-second interval, 30 clean samples take about one minute to
+establish a baseline. Configure persistent storage on your host for `/app/data`;
+otherwise a container restart or redeploy can erase learned baselines and saved
+reports.
+
+Set `agent_id` to `auto` in the installer configuration to generate a unique,
+stable ID on the first launch of each installed agent.
