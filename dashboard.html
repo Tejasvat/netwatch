@@ -92,9 +92,11 @@ body::after { content: ''; position: fixed; inset: 0; background: repeating-line
   text-decoration: none; transition: all .2s;
 }
 .settings-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+.settings-btn.button { background: transparent; cursor: pointer; }
 
 /* Consent-based agent download prompt */
 #agent-consent { position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center; padding: 20px; background: rgba(0,0,0,.76); }
+#agent-consent[hidden] { display: none; }
 .consent-card { position: relative; width: min(520px, 100%); padding: 28px; border: 1px solid var(--line2); border-radius: 8px; background: var(--bg1); box-shadow: 0 18px 70px rgba(0,0,0,.55); }
 .consent-card h2 { color: var(--bright); font-size: 20px; margin-bottom: 12px; }
 .consent-card p { color: var(--text); line-height: 1.55; margin: 10px 0; }
@@ -479,9 +481,9 @@ body::after { content: ''; position: fixed; inset: 0; background: repeating-line
 </style>
 </head>
 <body>
-<section id="agent-consent" role="dialog" aria-modal="true" aria-labelledby="agent-consent-title">
+<section id="agent-consent" role="dialog" aria-modal="true" aria-labelledby="agent-consent-title" hidden>
   <div class="consent-card">
-    <button class="consent-close" type="button" aria-label="Close download prompt" onclick="document.getElementById('agent-consent').remove()">&times;</button>
+    <button class="consent-close" type="button" aria-label="Close download prompt" onclick="closeAgentConsent()">&times;</button>
     <h2 id="agent-consent-title">Monitor this Windows computer?</h2>
     <p>NetWatch needs its optional desktop agent to show live network activity from this computer.</p>
     <ul>
@@ -490,8 +492,8 @@ body::after { content: ''; position: fixed; inset: 0; background: repeating-line
       <li>The agent has a visible Start/Stop control and should only be installed by the device owner or an authorized administrator.</li>
     </ul>
     <div class="consent-actions">
-      <a class="consent-download" href="/downloads/netwatch-agent" onclick="document.getElementById('agent-consent').remove()">I understand — download Windows agent</a>
-      <button class="consent-dismiss" type="button" onclick="document.getElementById('agent-consent').remove()">Continue without agent</button>
+      <a class="consent-download" href="/downloads/netwatch-agent" onclick="closeAgentConsent()">I understand — download Windows agent</a>
+      <button class="consent-dismiss" type="button" onclick="closeAgentConsent()">Continue without agent</button>
     </div>
   </div>
 </section>
@@ -526,6 +528,7 @@ body::after { content: ''; position: fixed; inset: 0; background: repeating-line
       <span class="val" style="color:var(--green)">local-pc-01</span>
     </div>
     <div class="status-badge status-offline" id="status-badge">Waiting…</div>
+    <button class="settings-btn button" type="button" onclick="openAgentConsent()">Download Agent</button>
     <a class="settings-btn" href="/settings-page" target="_blank">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"/></svg>
       Settings
@@ -762,6 +765,24 @@ body::after { content: ''; position: fixed; inset: 0; background: repeating-line
 <script>
 const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
 const N = 80;
+const AGENT_CONSENT_STORAGE_KEY = 'netwatch-agent-consent-seen-v1';
+
+function openAgentConsent() {
+  document.getElementById('agent-consent').hidden = false;
+}
+
+function closeAgentConsent() {
+  document.getElementById('agent-consent').hidden = true;
+  try {
+    localStorage.setItem(AGENT_CONSENT_STORAGE_KEY, 'true');
+  } catch (_) {}
+}
+
+try {
+  if (localStorage.getItem(AGENT_CONSENT_STORAGE_KEY) !== 'true') openAgentConsent();
+} catch (_) {
+  openAgentConsent();
+}
 
 const SEV_COL = { OK:'#00e676', LOW:'#29d8f0', MEDIUM:'#ffd740', HIGH:'#ffba08', CRITICAL:'#ff3355', WARMING_UP:'#334455' };
 const SEV_ORD = { OK:0, WARMING_UP:0, LOW:1, MEDIUM:2, HIGH:3, CRITICAL:4 };
