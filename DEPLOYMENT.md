@@ -27,7 +27,9 @@ docker run --rm -p 8000:8000 netwatch
 
 Deploy the same Dockerfile to a container host such as Render, Railway, Fly.io,
 Azure Container Apps, or Google Cloud Run. Configure the host health check as
-`GET /status`, provide HTTPS, and set its public URL in the rebuilt agent.
+`GET /status`, provide HTTPS, and set its public URL in the rebuilt agent. A
+health-check request receives only `{ "status": "ok" }`; device telemetry still
+requires a private device link.
 
 ## Privacy and authorization
 

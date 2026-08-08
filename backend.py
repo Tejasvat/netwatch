@@ -396,14 +396,23 @@ async def websocket_endpoint(websocket: WebSocket):
 
 # ── Pages ─────────────────────────────────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
-async def serve_dashboard():
-    for name in ("dashboard.html",):
+async def serve_landing_page():
+    for name in ("landing.html",):
         try:
             with open(name, encoding="utf-8") as f:
                 return HTMLResponse(f.read())
         except FileNotFoundError:
             pass
-    return HTMLResponse("<h2>dashboard.html not found</h2>", 404)
+    return HTMLResponse("<h2>landing.html not found</h2>", 404)
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def serve_dashboard():
+    try:
+        with open("dashboard.html", encoding="utf-8") as f:
+            return HTMLResponse(f.read())
+    except FileNotFoundError:
+        return HTMLResponse("<h2>dashboard.html not found</h2>", 404)
 
 
 @app.get("/settings-page", response_class=HTMLResponse)

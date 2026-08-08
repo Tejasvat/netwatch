@@ -784,9 +784,9 @@ function closeAgentConsent() {
 }
 
 try {
-  if (localStorage.getItem(AGENT_CONSENT_STORAGE_KEY) !== 'true') openAgentConsent();
+  if (!IS_PAIRED && localStorage.getItem(AGENT_CONSENT_STORAGE_KEY) !== 'true') openAgentConsent();
 } catch (_) {
-  openAgentConsent();
+  if (!IS_PAIRED) openAgentConsent();
 }
 
 const SEV_COL = { OK:'#00e676', LOW:'#29d8f0', MEDIUM:'#ffd740', HIGH:'#ffba08', CRITICAL:'#ff3355', WARMING_UP:'#334455' };

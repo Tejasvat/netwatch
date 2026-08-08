@@ -68,7 +68,7 @@ def _get_dashboard_token() -> str:
 
 DASHBOARD_TOKEN = _get_dashboard_token()
 PRIVATE_DASHBOARD_URL = (
-    f"{DASHBOARD_URL}/#{urlencode({'agent': AGENT_ID, 'token': DASHBOARD_TOKEN})}"
+    f"{DASHBOARD_URL}/dashboard#{urlencode({'agent': AGENT_ID, 'token': DASHBOARD_TOKEN})}"
     if DASHBOARD_URL else ""
 )
 
