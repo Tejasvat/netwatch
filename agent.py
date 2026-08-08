@@ -4,15 +4,30 @@ import tkinter as tk
 import threading
 import time
 import os
+import json
+import sys
 from collections import defaultdict, deque
 from datetime import datetime, timezone
 
 import psutil
 import requests
 
-BACKEND_URL    = BACKEND_URL = "https://conjoint-brittni-unobtruded.ngrok-free.dev/ingest"
-API_SECRET_KEY = "cc08f3a267bed72ae26efd3aec255ce9b3d8fe5d2d71d114b3574dace07230e3"
-AGENT_ID       = "remote-client-01"
+APP_DIR = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, "frozen", False) else __file__))
+CONFIG_PATH = os.path.join(APP_DIR, "agent_config.json")
+
+
+def _load_config() -> dict:
+    try:
+        with open(CONFIG_PATH, encoding="utf-8") as config_file:
+            return json.load(config_file)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+CONFIG = _load_config()
+BACKEND_URL = os.environ.get("NETWATCH_BACKEND_URL", CONFIG.get("backend_url", "")).rstrip("/")
+API_SECRET_KEY = os.environ.get("NETWATCH_API_SECRET_KEY", CONFIG.get("api_secret_key", ""))
+AGENT_ID = os.environ.get("NETWATCH_AGENT_ID", CONFIG.get("agent_id", "unconfigured-agent"))
 
 INTERVAL  = 2
 TIER      = "remote_client"
@@ -312,6 +327,10 @@ class NetWatchApp:
             self._start()
 
     def _start(self):
+        if not BACKEND_URL.startswith(("https://", "http://")) or not API_SECRET_KEY:
+            with self._lock:
+                self._stats["error"] = "Configure agent_config.json before monitoring"
+            return
         self._running = True
         self._stop_evt.clear()
         with self._lock:
@@ -445,7 +464,8 @@ class NetWatchApp:
 
 def main():
     root = tk.Tk()
-    NetWatchApp(root)
+    app = NetWatchApp(root)
+    root.after(250, app._start)
     root.mainloop()
 
 

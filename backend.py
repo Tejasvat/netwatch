@@ -22,7 +22,7 @@ from rules        import (
     update_settings,
 )
 
-API_SECRET_KEY = "cc08f3a267bed72ae26efd3aec255ce9b3d8fe5d2d71d114b3574dace07230e3"
+API_SECRET_KEY = os.environ.get("NETWATCH_API_SECRET_KEY", "")
 
 # Client is considered online if last ping was within this many seconds
 HEARTBEAT_TIMEOUT = 10
@@ -53,6 +53,8 @@ SEVERITY_ORDER = {"OK": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
 
 # ── Auth helper ───────────────────────────────────────────────────────────────
 def _check_auth(request: Request):
+    if not API_SECRET_KEY:
+        raise HTTPException(status_code=503, detail="Server API key is not configured")
     key = request.headers.get("X-API-Key", "")
     if key != API_SECRET_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized: invalid or missing API key")

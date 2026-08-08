@@ -95,13 +95,15 @@ body::after { content: ''; position: fixed; inset: 0; background: repeating-line
 
 /* Consent-based agent download prompt */
 #agent-consent { position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center; padding: 20px; background: rgba(0,0,0,.76); }
-.consent-card { width: min(520px, 100%); padding: 28px; border: 1px solid var(--line2); border-radius: 8px; background: var(--bg1); box-shadow: 0 18px 70px rgba(0,0,0,.55); }
+.consent-card { position: relative; width: min(520px, 100%); padding: 28px; border: 1px solid var(--line2); border-radius: 8px; background: var(--bg1); box-shadow: 0 18px 70px rgba(0,0,0,.55); }
 .consent-card h2 { color: var(--bright); font-size: 20px; margin-bottom: 12px; }
 .consent-card p { color: var(--text); line-height: 1.55; margin: 10px 0; }
 .consent-card ul { color: var(--text); line-height: 1.6; margin: 10px 0 18px 20px; }
 .consent-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .consent-download { display: inline-block; padding: 10px 14px; border-radius: 4px; background: var(--green); color: #041009; font: 700 12px var(--mono); text-decoration: none; }
 .consent-dismiss { border: 0; background: transparent; color: var(--muted); font: 600 12px var(--mono); cursor: pointer; padding: 10px 4px; }
+.consent-close { position: absolute; top: 10px; right: 12px; border: 0; background: transparent; color: var(--muted); font: 24px/1 var(--sans); cursor: pointer; padding: 4px 8px; }
+.consent-close:hover { color: var(--bright); }
 
 /* ═══════════════════════════════════
    PAGE LAYOUT
@@ -479,6 +481,7 @@ body::after { content: ''; position: fixed; inset: 0; background: repeating-line
 <body>
 <section id="agent-consent" role="dialog" aria-modal="true" aria-labelledby="agent-consent-title">
   <div class="consent-card">
+    <button class="consent-close" type="button" aria-label="Close download prompt" onclick="document.getElementById('agent-consent').remove()">&times;</button>
     <h2 id="agent-consent-title">Monitor this Windows computer?</h2>
     <p>NetWatch needs its optional desktop agent to show live network activity from this computer.</p>
     <ul>
@@ -487,7 +490,7 @@ body::after { content: ''; position: fixed; inset: 0; background: repeating-line
       <li>The agent has a visible Start/Stop control and should only be installed by the device owner or an authorized administrator.</li>
     </ul>
     <div class="consent-actions">
-      <a class="consent-download" href="/downloads/netwatch-agent">I understand — download Windows agent</a>
+      <a class="consent-download" href="/downloads/netwatch-agent" onclick="document.getElementById('agent-consent').remove()">I understand — download Windows agent</a>
       <button class="consent-dismiss" type="button" onclick="document.getElementById('agent-consent').remove()">Continue without agent</button>
     </div>
   </div>

@@ -61,7 +61,9 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
 ; ---  REQUIRED: Main agent binary  ---
-Source: "{#MyAppExeName}";    DestDir: "{app}";    Flags: ignoreversion
+Source: "dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+; ---  REQUIRED: Server connection settings  ---
+Source: "agent_config.json";  DestDir: "{app}";    Flags: ignoreversion
 
 ; ---  OPTIONAL: Npcap (uncomment when bundling)  ---
 ; Download from https://npcap.com/#download
@@ -73,18 +75,13 @@ Source: "{#MyAppExeName}";    DestDir: "{app}";    Flags: ignoreversion
 
 [Icons]
 ; Start Menu shortcut
-Name: "{group}\{#MyAppName}";
-  Filename: "{app}\{#MyAppExeName}";
-  Comment: "NetWatch network monitoring agent"
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Comment: "NetWatch network monitoring agent"
 
 ; Start Menu uninstall shortcut
-Name: "{group}\Uninstall {#MyAppName}";
-  Filename: "{uninstallexe}"
+Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 
 ; Desktop shortcut
-Name: "{userdesktop}\{#MyAppName}";
-  Filename: "{app}\{#MyAppExeName}";
-  Comment: "Open NetWatch Agent"
+Name: "{userdesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Comment: "Open NetWatch Agent"
 
 [Run]
 ; ---  OPTIONAL: Install Npcap silently (uncomment with [Files] entry above)  ---
@@ -105,15 +102,11 @@ Name: "{userdesktop}\{#MyAppName}";
 ;   Flags: runhidden waitprogramterminate
 
 ; ---  Launch agent after install (the GUI will appear)  ---
-Filename: "{app}\{#MyAppExeName}";
-  Description: "Launch {#MyAppName} now";
-  Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName} now"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
 ; Kill any running instance before uninstalling files
-Filename: "{cmd}";
-  Parameters: "/C taskkill /F /IM {#MyAppExeName}";
-  Flags: runhidden
+Filename: "{cmd}"; Parameters: "/C taskkill /F /IM {#MyAppExeName}"; Flags: runhidden
 
 [Messages]
 ; Customise the Welcome page text (uncomment to activate):
