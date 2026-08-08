@@ -254,7 +254,11 @@ async def get_history(agent_id: str, request: Request, n: int = 100):
 
 
 @app.get("/status")
-async def get_status(agent_id: str, request: Request):
+async def get_status(request: Request, agent_id: str | None = None):
+    # Render health checks do not include device credentials. Return no telemetry
+    # unless a private dashboard supplies both an agent ID and its token.
+    if not agent_id:
+        return {"status": "ok"}
     _agent_from_dashboard_request(request, agent_id)
     detector = _get_detector(agent_id)
     rule_engine = _get_rule_engine(agent_id)
