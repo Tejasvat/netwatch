@@ -7,6 +7,7 @@ import os
 import json
 import sys
 import uuid
+from urllib.parse import urlencode
 from collections import defaultdict, deque
 from datetime import datetime, timezone
 
@@ -28,6 +29,7 @@ def _load_config() -> dict:
 CONFIG = _load_config()
 BACKEND_URL = os.environ.get("NETWATCH_BACKEND_URL", CONFIG.get("backend_url", "")).rstrip("/")
 API_SECRET_KEY = os.environ.get("NETWATCH_API_SECRET_KEY", CONFIG.get("api_secret_key", ""))
+DASHBOARD_URL = os.environ.get("NETWATCH_DASHBOARD_URL", CONFIG.get("dashboard_url", "")).rstrip("/")
 
 
 def _get_agent_id() -> str:
@@ -48,12 +50,35 @@ def _get_agent_id() -> str:
 
 AGENT_ID = _get_agent_id()
 
+
+def _get_dashboard_token() -> str:
+    configured_token = CONFIG.get("dashboard_token", "auto")
+    if configured_token and configured_token != "auto":
+        return configured_token
+
+    generated_token = uuid.uuid4().hex + uuid.uuid4().hex
+    CONFIG["dashboard_token"] = generated_token
+    try:
+        with open(CONFIG_PATH, "w", encoding="utf-8") as config_file:
+            json.dump(CONFIG, config_file, indent=2)
+    except OSError:
+        pass
+    return generated_token
+
+
+DASHBOARD_TOKEN = _get_dashboard_token()
+PRIVATE_DASHBOARD_URL = (
+    f"{DASHBOARD_URL}/#{urlencode({'agent': AGENT_ID, 'token': DASHBOARD_TOKEN})}"
+    if DASHBOARD_URL else ""
+)
+
 INTERVAL  = 2
 TIER      = "remote_client"
 SNORT_LOG = r"C:\Snort\log\alert.ids"
 
 AUTH_HEADERS = {
     "X-API-Key":    API_SECRET_KEY,
+    "X-Dashboard-Token": DASHBOARD_TOKEN,
     "Content-Type": "application/json",
 }
 
@@ -272,6 +297,16 @@ class NetWatchApp:
         self._btn.pack()
         self._apply_btn_style(active=False)
 
+        self._link_btn = tk.Button(
+            btn_wrap,
+            text="COPY PRIVATE DASHBOARD LINK",
+            command=self._copy_private_dashboard_link,
+            font=("Courier", 9, "bold"), relief="flat", bd=0,
+            padx=14, pady=8, cursor="hand2", bg=C["bg"], fg=C["cyan"],
+            activebackground=C["bg"], activeforeground=C["bright"],
+        )
+        self._link_btn.pack(pady=(10, 0))
+
         tk.Frame(r, bg=C["line"], height=1).pack(fill="x", padx=22)
 
         stats_frame = tk.Frame(r, bg=C["bg"], pady=20)
@@ -344,6 +379,15 @@ class NetWatchApp:
             self._stop()
         else:
             self._start()
+
+    def _copy_private_dashboard_link(self):
+        if not PRIVATE_DASHBOARD_URL:
+            with self._lock:
+                self._stats["error"] = "Set dashboard_url in agent_config.json"
+            return
+        self.root.clipboard_clear()
+        self.root.clipboard_append(PRIVATE_DASHBOARD_URL)
+        self._lbl_sub.config(text="Private dashboard link copied. Share it only with an authorized viewer.", fg=C["cyan"])
 
     def _start(self):
         if not BACKEND_URL.startswith(("https://", "http://")) or not API_SECRET_KEY:

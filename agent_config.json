@@ -1,5 +1,7 @@
 {
   "backend_url": "https://netwatch-ypdn.onrender.com/ingest",
+  "dashboard_url": "https://netwatch-ypdn.onrender.com",
   "api_secret_key": "uBZIlwwfPHvhsTnb_3PDc5f2b7XWUea_Cq2tv3AhGjc",
-  "agent_id": "auto"
+  "agent_id": "auto",
+  "dashboard_token": "auto"
 }

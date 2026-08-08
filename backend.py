@@ -1,9 +1,11 @@
 
 import asyncio
+import hmac
 import json
 import os
+import re
 import time
-from collections import deque
+from collections import defaultdict, deque
 from datetime import datetime, timezone
 from typing import Set
 
@@ -36,8 +38,9 @@ app.add_middleware(
 # ── State ─────────────────────────────────────────────────────────────────────
 detectors: dict[str, AnomalyDetector] = {}
 rule_engines: dict[str, AdaptiveRuleEngine] = {}
-history:    deque = deque(maxlen=1000)
-ws_clients: Set[WebSocket] = set()
+history_by_agent: dict[str, deque] = defaultdict(lambda: deque(maxlen=1000))
+ws_clients: dict[WebSocket, str] = {}
+agent_dashboard_tokens: dict[str, str] = {}
 STATE_ROOT  = os.environ.get("NETWATCH_STATE_DIR", "data")
 ALERTS_DIR  = os.path.join(STATE_ROOT, "alert_reports")
 os.makedirs(ALERTS_DIR, exist_ok=True)
@@ -45,10 +48,8 @@ AGENT_INSTALLER_PATH = os.environ.get(
     "AGENT_INSTALLER_PATH", os.path.join("dist", "NetWatchSetup-v4.0.exe")
 )
 
-# Heartbeat state
-_last_seen: float | None = None        # monotonic time of last valid /ingest
-_last_seen_ts: str | None = None       # ISO timestamp for display
-_client_agent_id: str | None = None    # ID of the connected client
+# Heartbeat state, isolated per agent.
+agent_last_seen: dict[str, tuple[float, str]] = {}
 
 SEVERITY_ORDER = {"OK": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
 
@@ -65,6 +66,10 @@ def _get_rule_engine(agent_id: str) -> AdaptiveRuleEngine:
     return rule_engines[agent_id]
 
 
+def _safe_agent_id(agent_id: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", agent_id).strip("._") or "unknown-agent"
+
+
 # ── Auth helper ───────────────────────────────────────────────────────────────
 def _check_auth(request: Request):
     if not API_SECRET_KEY:
@@ -76,16 +81,25 @@ def _check_auth(request: Request):
 
 # ── Heartbeat helpers ─────────────────────────────────────────────────────────
 def _touch_heartbeat(agent_id: str):
-    global _last_seen, _last_seen_ts, _client_agent_id
-    _last_seen      = time.monotonic()
-    _last_seen_ts   = datetime.now(timezone.utc).isoformat()
-    _client_agent_id = agent_id
+    agent_last_seen[agent_id] = (time.monotonic(), datetime.now(timezone.utc).isoformat())
 
 
-def _client_online() -> bool:
-    if _last_seen is None:
+def _client_online(agent_id: str) -> bool:
+    last_seen = agent_last_seen.get(agent_id)
+    if last_seen is None:
         return False
-    return (time.monotonic() - _last_seen) < HEARTBEAT_TIMEOUT
+    return (time.monotonic() - last_seen[0]) < HEARTBEAT_TIMEOUT
+
+
+def _check_dashboard_token(agent_id: str, token: str):
+    expected = agent_dashboard_tokens.get(agent_id, "")
+    if not expected or not token or not hmac.compare_digest(expected, token):
+        raise HTTPException(status_code=401, detail="A valid private device link is required")
+
+
+def _agent_from_dashboard_request(request: Request, agent_id: str) -> str:
+    _check_dashboard_token(agent_id, request.headers.get("X-Dashboard-Token", ""))
+    return agent_id
 
 
 # ── Pydantic ──────────────────────────────────────────────────────────────────
@@ -112,7 +126,9 @@ def _make_alert_title(enriched: dict) -> str:
 def _save_alert_report(enriched: dict):
     title    = _make_alert_title(enriched)
     filename = f"{title}.json"
-    path     = os.path.join(ALERTS_DIR, filename)
+    agent_dir = os.path.join(ALERTS_DIR, _safe_agent_id(enriched["agent_id"]))
+    os.makedirs(agent_dir, exist_ok=True)
+    path     = os.path.join(agent_dir, filename)
     report = {
         "title":     title,
         "generated": datetime.now(timezone.utc).isoformat(),
@@ -137,12 +153,16 @@ def _save_alert_report(enriched: dict):
 async def broadcast(payload: dict):
     dead    = set()
     message = json.dumps(payload)
-    for ws in ws_clients:
+    agent_id = payload.get("agent_id")
+    for ws, paired_agent_id in ws_clients.items():
+        if paired_agent_id != agent_id:
+            continue
         try:
             await ws.send_text(message)
         except Exception:
             dead.add(ws)
-    ws_clients.difference_update(dead)
+    for ws in dead:
+        ws_clients.pop(ws, None)
 
 
 # ── Background heartbeat broadcaster ─────────────────────────────────────────
@@ -150,14 +170,13 @@ async def _heartbeat_broadcaster():
     """Push client_online status to all dashboards every 2 seconds."""
     while True:
         await asyncio.sleep(2)
-        online = _client_online()
-        payload = {
-            "__type":        "heartbeat",
-            "client_online": online,
-            "last_seen_ts":  _last_seen_ts,
-            "agent_id":      _client_agent_id,
-        }
-        await broadcast(payload)
+        for agent_id, (_, last_seen_ts) in list(agent_last_seen.items()):
+            await broadcast({
+                "__type":        "heartbeat",
+                "client_online": _client_online(agent_id),
+                "last_seen_ts":  last_seen_ts,
+                "agent_id":      agent_id,
+            })
 
 
 @app.on_event("startup")
@@ -169,6 +188,10 @@ async def startup_event():
 @app.post("/ingest")
 async def ingest(event: AgentEvent, request: Request):
     _check_auth(request)
+    dashboard_token = request.headers.get("X-Dashboard-Token", "")
+    if len(dashboard_token) < 24:
+        raise HTTPException(status_code=401, detail="Agent dashboard token is missing or invalid")
+    agent_dashboard_tokens[event.agent_id] = dashboard_token
 
     # Update heartbeat
     _touch_heartbeat(event.agent_id)
@@ -206,7 +229,7 @@ async def ingest(event: AgentEvent, request: Request):
         **fusion_result,
     }
 
-    history.append(enriched)
+    history_by_agent[event.agent_id].append(enriched)
     asyncio.create_task(broadcast(enriched))
 
     alert_file = None
@@ -225,39 +248,46 @@ async def ingest(event: AgentEvent, request: Request):
 
 # ── REST ──────────────────────────────────────────────────────────────────────
 @app.get("/history")
-async def get_history(n: int = 100):
-    return list(history)[-n:]
+async def get_history(agent_id: str, request: Request, n: int = 100):
+    _agent_from_dashboard_request(request, agent_id)
+    return list(history_by_agent[agent_id])[-n:]
 
 
 @app.get("/status")
-async def get_status():
-    detector = _get_detector(_client_agent_id) if _client_agent_id else None
-    rule_engine = _get_rule_engine(_client_agent_id) if _client_agent_id else None
+async def get_status(agent_id: str, request: Request):
+    _agent_from_dashboard_request(request, agent_id)
+    detector = _get_detector(agent_id)
+    rule_engine = _get_rule_engine(agent_id)
+    last_seen = agent_last_seen.get(agent_id)
     return {
-        "ml_warmed_up":        detector.is_warmed_up if detector else False,
-        "ml_samples":          detector.samples_collected if detector else 0,
-        "ml_warmup_remaining": detector.warmup_needed if detector else 30,
-        "current_context":     detector.current_context if detector else "warming_up",
-        "score_stats":         detector.score_stats if detector else {"mean": None, "std": None, "p95": None},
-        "ema":                 detector.ema_snapshot if detector else {},
-        "event_count":         len(history),
+        "ml_warmed_up":        detector.is_warmed_up,
+        "ml_samples":          detector.samples_collected,
+        "ml_warmup_remaining": detector.warmup_needed,
+        "current_context":     detector.current_context,
+        "score_stats":         detector.score_stats,
+        "ema":                 detector.ema_snapshot,
+        "event_count":         len(history_by_agent[agent_id]),
         "connected_dashboards":len(ws_clients),
-        "thresholds":          rule_engine.current_thresholds() if rule_engine else {},
+        "thresholds":          rule_engine.current_thresholds(),
         # Heartbeat fields
-        "client_online":       _client_online(),
-        "last_seen_ts":        _last_seen_ts,
-        "client_agent_id":     _client_agent_id,
+        "client_online":       _client_online(agent_id),
+        "last_seen_ts":        last_seen[1] if last_seen else None,
+        "client_agent_id":     agent_id,
     }
 
 
 # ── Alert downloads ───────────────────────────────────────────────────────────
 @app.get("/alerts")
-async def list_alerts():
+async def list_alerts(agent_id: str, request: Request):
+    _agent_from_dashboard_request(request, agent_id)
     files = []
-    for fn in sorted(os.listdir(ALERTS_DIR), reverse=True):
+    agent_dir = os.path.join(ALERTS_DIR, _safe_agent_id(agent_id))
+    if not os.path.isdir(agent_dir):
+        return files
+    for fn in sorted(os.listdir(agent_dir), reverse=True):
         if not fn.endswith(".json"):
             continue
-        path = os.path.join(ALERTS_DIR, fn)
+        path = os.path.join(agent_dir, fn)
         try:
             with open(path) as f:
                 data = json.load(f)
@@ -275,8 +305,11 @@ async def list_alerts():
 
 
 @app.get("/alerts/{filename}")
-async def download_alert(filename: str):
-    path = os.path.join(ALERTS_DIR, filename)
+async def download_alert(filename: str, agent_id: str, request: Request):
+    _agent_from_dashboard_request(request, agent_id)
+    if os.path.basename(filename) != filename:
+        raise HTTPException(status_code=404, detail="Alert file not found")
+    path = os.path.join(ALERTS_DIR, _safe_agent_id(agent_id), filename)
     if not os.path.exists(path) or not filename.endswith(".json"):
         raise HTTPException(status_code=404, detail="Alert file not found")
     return FileResponse(path, media_type="application/json", filename=filename)
@@ -295,8 +328,11 @@ async def download_agent_installer():
 
 
 @app.delete("/alerts/{filename}")
-async def delete_alert(filename: str):
-    path = os.path.join(ALERTS_DIR, filename)
+async def delete_alert(filename: str, agent_id: str, request: Request):
+    _agent_from_dashboard_request(request, agent_id)
+    if os.path.basename(filename) != filename:
+        raise HTTPException(status_code=404, detail="Alert file not found")
+    path = os.path.join(ALERTS_DIR, _safe_agent_id(agent_id), filename)
     if os.path.exists(path):
         os.remove(path)
     return {"deleted": filename}
@@ -326,25 +362,32 @@ async def get_thresholds():
 # ── WebSocket ─────────────────────────────────────────────────────────────────
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    agent_id = websocket.query_params.get("agent_id", "")
+    token = websocket.query_params.get("token", "")
+    expected = agent_dashboard_tokens.get(agent_id, "")
+    if not agent_id or not expected or not hmac.compare_digest(expected, token):
+        await websocket.close(code=4401)
+        return
     await websocket.accept()
-    ws_clients.add(websocket)
+    ws_clients[websocket] = agent_id
     try:
         # Send recent history
-        for event in list(history)[-80:]:
+        for event in list(history_by_agent[agent_id])[-80:]:
             await websocket.send_text(json.dumps(event))
         # Send current heartbeat state immediately
+        last_seen = agent_last_seen.get(agent_id)
         await websocket.send_text(json.dumps({
             "__type":        "heartbeat",
-            "client_online": _client_online(),
-            "last_seen_ts":  _last_seen_ts,
-            "agent_id":      _client_agent_id,
+            "client_online": _client_online(agent_id),
+            "last_seen_ts":  last_seen[1] if last_seen else None,
+            "agent_id":      agent_id,
         }))
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
-        ws_clients.discard(websocket)
+        ws_clients.pop(websocket, None)
     except Exception:
-        ws_clients.discard(websocket)
+        ws_clients.pop(websocket, None)
 
 
 # ── Pages ─────────────────────────────────────────────────────────────────────

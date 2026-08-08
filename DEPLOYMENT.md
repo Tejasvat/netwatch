@@ -47,3 +47,14 @@ reports.
 
 Set `agent_id` to `auto` in the installer configuration to generate a unique,
 stable ID on the first launch of each installed agent.
+
+## Private device dashboards
+
+Each agent also generates its own dashboard token. Use the agent window's
+**Copy Private Dashboard Link** button and open that link on an authorized
+device. The plain site URL shows no agent telemetry. Treat each private link
+as a password: anyone who receives it can view that one device's dashboard.
+
+On Render Free, the short-lived pairing registry is cleared whenever the
+service restarts. Keep the agent running; it re-registers automatically within
+a few seconds, after which its private link works again.

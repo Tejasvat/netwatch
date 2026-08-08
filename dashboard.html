@@ -765,6 +765,11 @@ body::after { content: ''; position: fixed; inset: 0; background: repeating-line
 <script>
 const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
 const N = 80;
+const dashboardPairing = new URLSearchParams(location.hash.slice(1));
+const PAIRED_AGENT_ID = dashboardPairing.get('agent') || '';
+const DASHBOARD_TOKEN = dashboardPairing.get('token') || '';
+const IS_PAIRED = Boolean(PAIRED_AGENT_ID && DASHBOARD_TOKEN);
+const DASHBOARD_HEADERS = IS_PAIRED ? { 'X-Dashboard-Token': DASHBOARD_TOKEN } : {};
 const AGENT_CONSENT_STORAGE_KEY = 'netwatch-agent-consent-seen-v1';
 
 function openAgentConsent() {
@@ -976,17 +981,26 @@ function addAlertFile(meta) {
 }
 
 function downloadAlert(filename) {
-  const a = document.createElement('a');
-  a.href = `/alerts/${filename}`;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+  if (!IS_PAIRED) return;
+  fetch(`/alerts/${encodeURIComponent(filename)}?agent_id=${encodeURIComponent(PAIRED_AGENT_ID)}`, {
+    headers: DASHBOARD_HEADERS,
+  }).then(r => {
+    if (!r.ok) throw new Error('Download unavailable');
+    return r.blob();
+  }).then(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }).catch(() => {});
 }
 
 async function loadExistingAlerts() {
+  if (!IS_PAIRED) return;
   try {
-    const r = await fetch('/alerts');
+    const r = await fetch(`/alerts?agent_id=${encodeURIComponent(PAIRED_AGENT_ID)}`, { headers: DASHBOARD_HEADERS });
+    if (!r.ok) return;
     const files = await r.json();
     files.slice(0, 20).forEach(f => addAlertFile({ filename: f.filename, title: f.title, severity: f.severity, ts: f.timestamp }));
   } catch {}
@@ -1135,7 +1149,14 @@ function addLogRow(ev, sev, ctx) {
 // WebSocket
 let ws, rt;
 function connect() {
-  ws = new WebSocket(WS_URL);
+  if (!IS_PAIRED) {
+    const badge = document.getElementById('status-badge');
+    badge.className = 'status-badge status-offline';
+    badge.textContent = 'Private link required';
+    return;
+  }
+  const query = new URLSearchParams({ agent_id: PAIRED_AGENT_ID, token: DASHBOARD_TOKEN });
+  ws = new WebSocket(`${WS_URL}?${query}`);
   ws.onmessage = e => {
     try {
       const d = JSON.parse(e.data);
@@ -1149,7 +1170,7 @@ function connect() {
   };
   ws.onclose = () => {
     document.getElementById('status-badge').className = 'status-badge status-offline';
-    document.getElementById('status-badge').textContent = 'Offline';
+    document.getElementById('status-badge').textContent = 'Waiting for private agent';
     rt = setTimeout(connect, 3000);
   };
   ws.onerror = () => {};
