@@ -26,7 +26,7 @@ main { max-width:920px; margin:0 auto; padding:78px 28px 52px; position:relative
   <main>
     <section class="hero"><div class="eyebrow">NETWORK ANOMALY MONITORING</div><h1>Your network data stays tied to your device.</h1><p>NetWatch uses a private device link so each dashboard only shows data from the agent that created it.</p></section>
     <section class="grid" aria-label="Get started">
-      <div class="card"><h2>Open a private dashboard</h2><p>Paste the private link copied from your NetWatch Agent. It works on your computer or phone.</p><form id="private-link-form"><label for="private-link" class="eyebrow">PRIVATE DASHBOARD LINK</label><input id="private-link" class="input" type="url" placeholder="Paste your private link here" autocomplete="off" required><div class="actions"><button class="btn primary" type="submit">Open dashboard</button></div><div id="form-error" class="form-error" role="alert"></div></form></div>
+      <div class="card"><h2>Open a private dashboard</h2><p>Paste the private link copied from your NetWatch Agent. It works on your computer or phone. You can also paste the same link directly into a new browser tab.</p><form id="private-link-form"><label for="private-link" class="eyebrow">PRIVATE DASHBOARD LINK</label><input id="private-link" class="input" type="url" placeholder="Paste your private link here" autocomplete="off" required><div class="actions"><button class="btn primary" type="submit">Open dashboard</button></div><div id="form-error" class="form-error" role="alert"></div></form></div>
       <div class="card"><h2>Get started</h2><ol class="steps"><li>Download and install the Windows agent.</li><li>Open it and allow it to begin monitoring.</li><li>Click <strong>Copy Private Dashboard Link</strong>.</li><li>Paste the link here to view that device.</li></ol><div class="actions"><a class="btn secondary" href="/downloads/netwatch-agent">Download Windows agent</a></div></div>
     </section>
     <p class="privacy"><strong>Privacy:</strong> the agent sends aggregate network telemetry only. Share a private dashboard link only with authorized viewers; it acts like a password for that device.</p>
@@ -44,7 +44,9 @@ form.addEventListener('submit', event => {
   try {
     const link = new URL(input.value.trim());
     const pairing = new URLSearchParams(link.hash.slice(1));
-    if (link.origin !== location.origin || link.pathname !== '/dashboard' || !pairing.get('agent') || !pairing.get('token')) throw new Error();
+    const acceptedPath = link.pathname === '/' || link.pathname === '/dashboard';
+    if (link.origin !== location.origin || !acceptedPath || !pairing.get('agent') || !pairing.get('token')) throw new Error();
+    link.pathname = '/dashboard';
     location.assign(link.href);
   } catch (_) {
     error.textContent = 'Paste a valid private NetWatch dashboard link from the agent.';
